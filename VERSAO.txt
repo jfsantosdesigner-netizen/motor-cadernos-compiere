@@ -1,7 +1,13 @@
-MOTOR DE CADERNOS COMPIERE - v19 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v20 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v20 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
+ - GAVETA / MÓDULO MONTADO COM PAINÉIS (não é módulo do Promob: fundo horizontal >= 0,1 m² acima de 300 mm + 3+ peças em pé
+   do mesmo material, até 140 mm acima do fundo): sai da listagem da parede -> prancha própria "GAVETA MONTADA COM PAINÉIS"
+ - pranchas de peça (divisor e gaveta): tabela + 3D SÓ das peças (isolado) com os balões + vista de cima com as cotas
+ - divisória ripada: listagem em 3D FRONTAL (todas as ripas, como a cota) + 3D LATERAL pegando o L (lado da perna do L)
 
 v19 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
  - MÓVEL COMPLEXO (divisória ripada): listagem com o móvel SOZINHO (sem o ambiente), em DUAS pranchas com imagem na

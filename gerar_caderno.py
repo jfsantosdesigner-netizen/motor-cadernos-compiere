@@ -338,7 +338,27 @@ for i in _dv:
     U_ = [min(o['bb'][0] for o in g_), min(o['bb'][1] for o in g_), max(o['bb'][3] for o in g_), max(o['bb'][4] for o in g_)]
     if len(g_) >= 4 and len(ori) == 2 and U_[2] - U_[0] <= 500 and U_[3] - U_[1] <= 500:
         DIVISORES.append(g_)
-_fora = {id(i) for d in DIVISORIAS for i in d['itens']} | {id(i) for g_ in DIVISORES for i in g_}
+# 3) GAVETA / MÓDULO MONTADO COM PAINÉIS (não é módulo do Promob): peça horizontal (fundo, >= 0,1 m²) acima de 300 mm
+#    + peças do MESMO material encostadas, até 140 mm acima do fundo, 3+ em pé. Sai da parede -> prancha própria.
+GAVETAS = []
+_usad = {id(i) for g_ in DIVISORES for i in g_}
+for fb in _comps:
+    if fb.get('_div') or id(fb) in _usad or fb['bb'][2] <= 300: continue
+    b = fb['bb']; dx_, dy_, dz_ = b[3] - b[0], b[4] - b[1], b[5] - b[2]
+    if not (dz_ <= 30 and dx_ * dy_ >= 1e5 and max(dx_, dy_) <= 1000): continue
+    mat_ = P[fb['pecas'][0]].get('mat')
+    g_ = [fb]; k_ = 0
+    while k_ < len(g_):
+        for o in _comps:
+            if o in g_ or o.get('_div') or id(o) in _usad: continue
+            ob = o['bb']
+            if P[o['pecas'][0]].get('mat') != mat_ or ob[2] < b[2] - 5 or ob[5] > b[2] + 140: continue
+            if _toca(g_[k_], o, 3): g_.append(o)
+        k_ += 1
+    em_pe = [o for o in g_ if o['bb'][5] - o['bb'][2] >= 60]
+    if len(g_) >= 4 and len(em_pe) >= 3:
+        GAVETAS.append(g_); _usad |= {id(o) for o in g_}
+_fora = {id(i) for d in DIVISORIAS for i in d['itens']} | {id(i) for g_ in DIVISORES for i in g_} | {id(i) for g_ in GAVETAS for i in g_}
 if _fora:
     for w in paredes: w['itens'] = [i for i in w['itens'] if id(i) not in _fora]
     paredes = [w for w in paredes if w['itens']]
@@ -1597,11 +1617,17 @@ for v in V:
         # REGRA (v18b, João): móvel complexo (divisória ripada em L) = SOZINHO, sem o ambiente, em DUAS imagens na
         # diagonal (uma de cada lado do L), cada uma na sua prancha; tabela completa nas duas; um balão por tipo de peça.
         its_ = PW[v['paredes'][0]]['itens']
-        for ang_ in (-38, 38):
+        # REGRA (v20, João): 1ª prancha = 3D FRONTAL (como a cota, com todas as ripas); 2ª = 3D LATERAL pegando o L
+        w_ = PW[v['paredes'][0]]; f_ = FV[w_['key']]; ax_ = 1 if f_[0] else 0; axd_ = 1 - ax_
+        rd_ = (f_[1], -f_[0])
+        cm_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in its_) / len(its_)
+        dd_ = [i for i in its_ if abs((i['bb'][axd_] + i['bb'][axd_ + 3]) / 2 - w_['plano']) > 120]   # peças fora da faixa = perna do L
+        lado_ = (sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in dd_) / len(dd_) - cm_) * rd_[ax_] if dd_ else 1
+        for ang_ in (0, (62 if lado_ > 0 else -62)):
             n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {v['titulo']}")
             tabela(p, v['linhas'], AREA_IN.x0, AREA_IN.y0)
             render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), v['paredes'], letra=v['letra'], itens=its_,
-                     ang=ang_, elev=12, dmin=5200, margem=60, isolado=True)
+                     ang=ang_, elev=6 if ang_ == 0 else 12, dmin=5200, margem=60, isolado=True)
     for s_ in ([] if v.get('divisoria') else v['subs']):
         n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']}")
         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)
@@ -1685,8 +1711,9 @@ for v in V:
 
 # REGRA (v18, PDF da Priscila): DIVISOR DE GAVETA (joias) = prancha própria: listagem das peças, 3D do divisor e
 # VISTA DE CIMA com as cotas de todos os vãos (largura e profundidade) + altura das peças.
-for g_ in DIVISORES:
-    n += 1; p = nova_prancha(doc, n, 'DIVISOR DE GAVETA')
+def _prancha_peca(g_, titulo, rotulo):
+    global n, _nl
+    n += 1; p = nova_prancha(doc, n, titulo)
     lt_ = letras[_nl]; _nl += 1
     chv = []
     for i in sorted(g_, key=lambda i: i['n']):
@@ -1695,7 +1722,10 @@ for g_ in DIVISORES:
     yb = tabela(p, [(d, dm, '') for d, dm in chv], AREA_IN.x0, AREA_IN.y0)
     wid_ = g_[0].get('parede') if g_[0].get('parede') in PW else paredes[0]['id']
     for i in g_: i['parede'] = wid_
-    # REGRA (v18b, João): sem 3D da gaveta (não mostrava o divisor); fica só a VISTA DE CIMA, grande
+    # REGRA (v20, João): 3D SÓ das peças (isolado), com os balões da listagem
+    r3 = fz.Rect(AREA_IN.x0, yb + 12, AREA_IN.x0 + 248, AREA_IN.y1)
+    p.draw_rect(r3, color=PRETO, width=0.5)
+    render3d(p, fz.Rect(r3.x0 + 2, r3.y0 + 2, r3.x1 - 2, r3.y1 - 2), [wid_], letra=lt_, itens=g_, ang=30, elev=35, dmin=1800, margem=60, isolado=True)
     x0_ = min(i['bb'][0] for i in g_); x1_ = max(i['bb'][3] for i in g_); y0_ = min(i['bb'][1] for i in g_); y1_ = max(i['bb'][4] for i in g_)
     ra = fz.Rect(AREA_IN.x0 + 262, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1 - 20)
     Sd, kd = next(((S_, MM / S_) for S_ in (2, 2.5, 5, 10, 15, 20) if (x1_ - x0_) * MM / S_ <= ra.width - 90 and (y1_ - y0_) * MM / S_ <= ra.height - 70), (20, MM / 20))
@@ -1709,15 +1739,20 @@ for g_ in DIVISORES:
             fcs_.append((b[5], [(b[0], b[1]), (b[3], b[1]), (b[3], b[4]), (b[0], b[4])], P[pi].get('rgb', MADEIRA), [True] * 4, P[pi].get('mat'), pi))
     fcs_.sort(key=lambda t: t[0])
     _desenho2d(p, fcs_, lambda x, y: (X_(x), Y_(y)))
-    vx = [v for i in g_ if i['bb'][3] - i['bb'][0] < i['bb'][4] - i['bb'][1] for v in (i['bb'][0], i['bb'][3])]
-    vy = [v for i in g_ if i['bb'][3] - i['bb'][0] >= i['bb'][4] - i['bb'][1] for v in (i['bb'][1], i['bb'][4])]
+    fin = lambda i: (i['bb'][3] - i['bb'][0]) <= 40 or (i['bb'][4] - i['bb'][1]) <= 40
+    vx = [v for i in g_ if fin(i) and i['bb'][3] - i['bb'][0] < i['bb'][4] - i['bb'][1] for v in (i['bb'][0], i['bb'][3])]
+    vy = [v for i in g_ if fin(i) and i['bb'][3] - i['bb'][0] >= i['bb'][4] - i['bb'][1] for v in (i['bb'][1], i['bb'][4])]
     cadeia_h(p, [x0_, x1_] + vx, Y_(y0_) + 16, Y_(y0_) + 2, X_)
     cadeia_h(p, [x0_, x1_], Y_(y1_) - 14, Y_(y1_) - 2, X_)
     cadeia_v(p, [y0_, y1_] + vy, X_(x1_) + 18, X_(x1_) + 2, lambda y: Y_(y))
     cadeia_v(p, [y0_, y1_], X_(x0_) - 14, X_(x0_) - 2, lambda y: Y_(y))
     alt_ = round(max(i['bb'][5] for i in g_) - min(i['bb'][2] for i in g_))
-    lab = f'DIVISOR - VISTA DE CIMA - ESC. 1:{Sd:g}   |   ALTURA DAS PEÇAS: {alt_} mm'
+    lab = f'{rotulo} - VISTA DE CIMA - ESC. 1:{Sd:g}   |   ALTURA: {alt_} mm'
     p.insert_text((ra.x0 + ra.width / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, AREA_IN.y1 - 6), lab, fontname='hebo', fontsize=8.5)
+
+# REGRA (v18/v20): DIVISOR DE GAVETA e GAVETA/MÓDULO MONTADO COM PAINÉIS = prancha própria (tabela + 3D isolado + vista de cima)
+for g_ in GAVETAS: _prancha_peca(g_, 'GAVETA MONTADA COM PAINÉIS', 'GAVETA')
+for g_ in DIVISORES: _prancha_peca(g_, 'DIVISOR DE GAVETA', 'DIVISOR')
 
 # ===== CAPA (design fixo: quadro externo + logo + cliente + EXECUTIVO - AMBIENTE) =====
 _W, _H = doc[0].rect.width, doc[0].rect.height
@@ -1746,9 +1781,9 @@ except Exception:
     import time as _t; cfg['saida'] = os.path.splitext(cfg['saida'])[0] + _t.strftime('_%H%M%S') + '.pdf'; doc.save(cfg['saida'], garbage=3, deflate=True)
 
 # ---------------- QUALIDADE (nível 1, por script) ----------------
-esperado = 4 + len(VW) + len(V) + len(DIVISORES) + len(DIVISORIAS)
+esperado = 4 + len(VW) + len(V) + len(DIVISORES) + len(DIVISORIAS) + len(GAVETAS)
 q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (gerado por script)", '',
-     f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas" + (f" + {len(DIVISORES)} divisor(es) de gaveta" if DIVISORES else '') + (f" | divisória ripada: {len(DIVISORIAS)}" if DIVISORIAS else ''),
+     f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas" + (f" + {len(DIVISORES)} divisor(es) de gaveta" if DIVISORES else '') + (f" + {len(GAVETAS)} gaveta(s) em painéis" if GAVETAS else '') + (f" | divisória ripada: {len(DIVISORIAS)}" if DIVISORIAS else ''),
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
 for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {VW[0]['letra']})")
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))

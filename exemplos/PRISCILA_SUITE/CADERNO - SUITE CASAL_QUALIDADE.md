@@ -1,13 +1,13 @@
 # QUALIDADE — PRISCILA / Suíte Casal (gerado por script)
 
-- APROVADO | nº de pranchas 15 = 4 + 5 listagens + 4 cotas + 1 divisor(es) de gaveta | divisória ripada: 1
+- APROVADO | nº de pranchas 16 = 4 + 5 listagens + 4 cotas + 1 divisor(es) de gaveta + 1 gaveta(s) em painéis | divisória ripada: 1
 - INCERTO | itens localizados no DXF: 61/63
   - INCERTO: Gaveta Corrediça Telescópica 354x90x400 (não localizado; listado com * na vista A)
   - INCERTO: Frente de Gaveta Reta 406x130x18 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais
 - VISTA A: paredes x-@120 | 10 linhas de listagem
-- VISTA B: paredes y+@-120 | 18 linhas de listagem
+- VISTA B: paredes y+@-120 | 13 linhas de listagem
 - VISTA C: paredes x+@4816 | 8 linhas de listagem
 - VISTA D: paredes y-@-4810 | 5 linhas de listagem
 - DIVISÓRIA RIPADA: paredes DIVISORIA@1951 | 19 linhas de listagem
@@ -22,23 +22,18 @@
   A9: Gaveta Corrediça Telescópica 354x90x400*
   A10: Frente de Gaveta Reta 406x130x18*
   B1: Balcão Inferior 1560x675x390
-  B2: Painel Branco MDP 784x18x480
-  B3: Painel Branco MDP 790x15x99
-  B4: Painel Branco MDP 465x18x99
-  B5: Painel Branco MDP 784x18x70
-  B6: Painel Branco MDP 135x18x480
-  B7: Painel Nude MDP 135x18x70
-  B8: Painel Nude MDP 670x18x540
-  B9: Painel Nude MDP 1660x18x70
-  B10: Painel Nude MDP 1660x18x432
-  B11: Painel Nude MDP 1276x18x70
-  B12: Painel Nude MDP 862x18x500
-  B13: Tamponamento Inferior 2645x18x100
-  B14: Tamponamento Inferior 1660x18x80
-  B15: Tamponamento Inferior 755x18x100
-  B16: Tamponamento Inferior 341x18x80
-  B17: Tamponamento Inferior 1550x18x80
-  B18: Tamponamento Inferior 135x18x500
+  B2: Painel Nude MDP 135x18x70
+  B3: Painel Nude MDP 670x18x540
+  B4: Painel Nude MDP 1660x18x70
+  B5: Painel Nude MDP 1660x18x432
+  B6: Painel Nude MDP 1276x18x70
+  B7: Painel Nude MDP 862x18x500
+  B8: Tamponamento Inferior 2645x18x100
+  B9: Tamponamento Inferior 1660x18x80
+  B10: Tamponamento Inferior 755x18x100
+  B11: Tamponamento Inferior 341x18x80
+  B12: Tamponamento Inferior 1550x18x80
+  B13: Tamponamento Inferior 135x18x500
   C1: Balcão 1 Gaveta 700x250x350
   C2: Painel Branco MDF 810x25x80
   C3: Painel Branco MDF 810x25x100

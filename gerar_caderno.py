@@ -140,6 +140,27 @@ def cor_material(nome):
     _cc[nome] = [list(rgb), best[1]] if rgb else None
     json.dump(_cc, open(_CC, 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
     return rgb
+# ===== TEXTURAS REAIS (veio da madeira) no 3D: imagem do material aplicada em perspectiva em cada face =====
+try:
+    from PIL import Image as _Im, ImageDraw as _ImD
+    import numpy as _np
+except Exception:
+    _Im = None
+_TXD = os.path.join(_MD, 'texturas'); _txc = {}
+def textura(nome):
+    if _Im is None or not nome: return None
+    if nome in _txc: return _txc[nome]
+    im = None; ref = (_cc.get(nome) or [None, None])[1]
+    if ref:
+        fn = ref.replace('\\', '/').split('/')[-1].lower(); loc = os.path.join(_TXD, fn)
+        try:
+            if os.path.exists(loc): im = _Im.open(loc).convert('RGB')
+            else:
+                full = ref if os.path.exists(ref) else os.path.join(_MAT, ref.split('MATERIAIS', 1)[-1].lstrip('/\\'))
+                if os.path.exists(full):
+                    im = _Im.open(full).convert('RGB'); im.thumbnail((512, 512)); os.makedirs(_TXD, exist_ok=True); im.save(loc, quality=82)
+        except Exception: im = None
+    _txc[nome] = im; return im
 _dm = {}; _ord = {}
 for e in _ET2.parse(cfg['xml']).iter('ITEM'):
     m_ = next((g for ch in e if ch.tag != 'ITEM' for g in ch if g.tag == 'MODEL'), None)
@@ -166,7 +187,7 @@ for p_ in P:
             if c_: break
     if c_:
         nm_ = c_.most_common(1)[0][0]; rgb = cor_material(nm_)
-        if rgb: p_['rgb'] = rgb; _nc += 1; _usadas[nm_] += 1
+        if rgb: p_['rgb'] = rgb; p_['mat'] = nm_; _nc += 1; _usadas[nm_] += 1
 print('CORES: %d pecas coloridas pelo MATERIAIS (medidas no XML: %d)' % (_nc, len(_dm)))
 for nm_, q_ in _usadas.most_common(): print('   %-22s %4d pecas <- %s' % (nm_, q_, os.path.relpath(_cc[nm_][1], _MAT)))
 for nm_ in [k for k, v in _cc.items() if not v]: print('   SEM TEXTURA:', nm_)
@@ -798,6 +819,54 @@ def _ordem_pecas(fcs, bbs, cam):
             if grau[j] == 0 and j not in feito: heapq.heappush(hp, (-dist[j], j))
     return out
 
+MM_TEX = 700.0   # a largura da imagem da textura representa ~700 mm de chapa
+def _persp(dst, src_):
+    # coeficientes PIL PERSPECTIVE: saída (dst) -> entrada (src_)
+    A = []; B = []
+    for (x, y), (u, v) in zip(dst, src_):
+        A.append([x, y, 1, 0, 0, 0, -u * x, -u * y]); B.append(u)
+        A.append([0, 0, 0, x, y, 1, -v * x, -v * y]); B.append(v)
+    return _np.linalg.solve(_np.array(A, float), _np.array(B, float)).tolist()
+
+def _raster3d(page, rect, fcs, T, pmat, dpi=170):
+    s_ = dpi / 72.0; W_ = max(1, int(rect.width * s_)); H_ = max(1, int(rect.height * s_))
+    img = _Im.new('RGB', (W_, H_), (255, 255, 255)); dr = _ImD.Draw(img)
+    px = lambda x, y: ((T(x, y)[0] - rect.x0) * s_, (T(x, y)[1] - rect.y0) * s_)
+    for f_ in fcs:
+        q, c_, ft, pc, vs, fs_ = f_[2], f_[3], f_[4], f_[5], f_[6], f_[7]
+        Q = [px(x, y) for x, y in q]
+        if area2(Q) < 0.5: continue
+        tex = textura(pmat.get(pc)) if pc is not None and pc >= 0 and len(vs) == 4 else None
+        x0_ = int(max(0, min(a for a, _ in Q))); y0_ = int(max(0, min(b for _, b in Q)))
+        x1_ = int(min(W_, max(a for a, _ in Q) + 1)); y1_ = int(min(H_, max(b for _, b in Q) + 1))
+        if tex is not None and x1_ - x0_ >= 3 and y1_ - y0_ >= 3:
+            L1 = math.dist(vs[0], vs[1]); L2 = math.dist(vs[0], vs[3])
+            mmpp = MM_TEX / tex.width
+            # veio acompanha o lado mais comprido da peça
+            if L1 >= L2: corners = [vs[0], vs[3], vs[2], vs[1]]; Lw, Lh = L2, L1
+            else: corners = [vs[0], vs[1], vs[2], vs[3]]; Lw, Lh = L1, L2
+            pw = max(2, min(900, int(Lw / mmpp))); ph = max(2, min(900, int(Lh / mmpp)))
+            tile = _Im.new('RGB', (pw, ph))
+            for ty in range(0, ph, tex.height):
+                for tx in range(0, pw, tex.width): tile.paste(tex, (tx, ty))
+            if fs_ < 0.999: tile = tile.point(lambda v: int(v * fs_))
+            iq = [q[vs.index(c3_)] for c3_ in corners]
+            dst = [(px(*p2)[0] - x0_, px(*p2)[1] - y0_) for p2 in iq]
+            try:
+                co = _persp(dst, [(0, 0), (pw, 0), (pw, ph), (0, ph)])
+                patch = tile.transform((x1_ - x0_, y1_ - y0_), _Im.PERSPECTIVE, co, _Im.BILINEAR)
+                mask = _Im.new('L', patch.size, 0); _ImD.Draw(mask).polygon([(a - x0_, b - y0_) for a, b in Q], fill=255)
+                img.paste(patch, (x0_, y0_), mask)
+            except Exception:
+                dr.polygon(Q, fill=tuple(int(255 * v) for v in c_))
+        else:
+            dr.polygon(Q, fill=tuple(int(255 * v) for v in c_))
+        for (a_, b_), fl_ in zip(zip(Q, Q[1:] + Q[:1]), ft):
+            if fl_: dr.line([a_, b_], fill=(50, 50, 50), width=max(1, int(0.35 * s_)))
+    import io as _io
+    bio = _io.BytesIO(); img.save(bio, format='JPEG', quality=88)
+    page.insert_image(rect, stream=bio.getvalue())
+
 def costas(w):
     # itens (painéis) cuja face voltada para a câmera fica atrás do fundo de um módulo da mesma parede -> escondidos
     f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
@@ -863,7 +932,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     cor = {}
     for i in inst:
         for pi in i['pecas']: cor[pi] = MADEIRA if i['tipo'] == 'comp' else (0.97, 0.97, 0.97)
-    src = []; shell = []
+    src = []; shell = []; _pmat = {}
     for p_ in P:
         b = p_['bb']
         sd_ = sorted(p_['dim'])
@@ -877,6 +946,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: 3D só com MDF (chapas); suportes, dobradiças, cabideiros, pés = fora
         if (dentro_(b, p_['i']) if ctx else (all(b[k] >= E[k] for k in range(3)) and all(b[k + 3] <= E[k + 3] for k in range(3)))):
             base = p_.get('rgb') or cor.get(p_['i'], (0.80, 0.80, 0.83))
+            _pmat[len(shell)] = p_.get('mat')
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
             shell.append(b)
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
@@ -906,7 +976,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         pp = [pj(v) for v in vs]
         if min(t[2] for t in pp) < 50: continue
         nm = _n(vs[0], vs[1], vs[2]); fs_ = 0.72 + 0.28 * abs(dot(nm, L)) / nl
-        fcs.append((gr, sum(t[2] for t in pp) / len(pp), [(t[0], t[1]) for t in pp], tuple(min(1, x * fs_) for x in base), ft, pc))
+        fcs.append((gr, sum(t[2] for t in pp) / len(pp), [(t[0], t[1]) for t in pp], tuple(min(1, x * fs_) for x in base), ft, pc, vs, fs_))
     if not fcs: return
     fcs = _ordem_pecas(fcs, shell, cam)
     xs = [x for f_ in fcs for x, _ in f_[2]]; ys = [y for f_ in fcs for _, y in f_[2]]
@@ -919,17 +989,21 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     k = min((rect.width - 16) / (x1 - x0), (rect.height - 16) / (y1 - y0))
     ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
     T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
-    if ctx: _tmp = fz.open(); _tp = _tmp.new_page(width=page.rect.width, height=page.rect.height); sh = _tp.new_shape()
-    else: sh = page.new_shape()
-    for gr_, dep_, q, c_, ft, _pc in fcs:
-        Q = [T(x, y) for x, y in q]
-        if area2(Q) < 0.1: continue
-        sh.draw_polyline(Q + [Q[0]]); sh.finish(color=c_, fill=c_, width=0.5, closePath=True)
-        for (a_, b_), f_ in zip(zip(Q, Q[1:] + Q[:1]), ft):
-            if f_: sh.draw_line(a_, b_)
-        sh.finish(color=(0.2, 0.2, 0.2), width=0.35)
-    sh.commit()
-    if ctx: page.show_pdf_page(rect, _tmp, 0, clip=rect)
+    if _Im is not None and cfg.get('textura', True) and any(textura(m_) for m_ in _pmat.values()):
+        _raster3d(page, rect, fcs, T, _pmat)
+    else:
+        if ctx: _tmp = fz.open(); _tp = _tmp.new_page(width=page.rect.width, height=page.rect.height); sh = _tp.new_shape()
+        else: sh = page.new_shape()
+        for f_ in fcs:
+            q, c_, ft = f_[2], f_[3], f_[4]
+            Q = [T(x, y) for x, y in q]
+            if area2(Q) < 0.1: continue
+            sh.draw_polyline(Q + [Q[0]]); sh.finish(color=c_, fill=c_, width=0.5, closePath=True)
+            for (a_, b_), fl_ in zip(zip(Q, Q[1:] + Q[:1]), ft):
+                if fl_: sh.draw_line(a_, b_)
+            sh.finish(color=(0.2, 0.2, 0.2), width=0.35)
+        sh.commit()
+        if ctx: page.show_pdf_page(rect, _tmp, 0, clip=rect)
     if letra:
         for i in its:
             nb = i.get('num_' + letra)

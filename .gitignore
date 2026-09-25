@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 _prev_*.png
 MATERIAIS/
+BIBLIOTECA_PROMOB/
+_reduzir_*.log

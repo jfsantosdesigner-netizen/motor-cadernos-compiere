@@ -1,6 +1,6 @@
 # QUALIDADE — RAFAEL CLARET / Escritório (gerado por script)
 
-- APROVADO | nº de pranchas 6 = 4 + 2 x 1 vistas
+- APROVADO | nº de pranchas 6 = 4 + 1 listagens + 1 cotas
 - APROVADO | itens localizados no DXF: 7/7
 - APROVADO | XML confere com o projeto
 - VISTA A: paredes x+@2164 | 7 linhas de listagem

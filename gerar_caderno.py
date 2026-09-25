@@ -203,9 +203,12 @@ for g in livres:
 for v in V:
     v.setdefault('letras', [v['letra'] + (str(j + 1) if len(v['paredes']) > 1 else '') for j in range(len(v['paredes']))])
     v['titulo'] = 'VISTA ' + v['letras'][0] if len(v['letras']) == 1 else 'VISTAS ' + ' E '.join(v['letras'])
+    # REGRA (João): LISTAGEM sempre FRONTAL e POR PAREDE (só os móveis daquela parede); o bloco junta só as cotas.
+    v['subs'] = [v] if len(v['paredes']) == 1 else [dict(letra=l_, letras=[l_], titulo='VISTA ' + l_, img3d=None, paredes=[w_]) for w_, l_ in zip(v['paredes'], v['letras'])]
+VW = [s_ for v in V for s_ in v['subs']]
 
 # listagem de cada vista: módulos primeiro, depois componentes; mesmo item = mesma linha
-for v in V:
+for v in VW:
     its = [i for w in v['paredes'] for i in PW[w]['itens']]
     ordem = sorted(its, key=lambda i: (i['tipo'] != 'mod', i['n']))
     chaves = []
@@ -215,7 +218,7 @@ for v in V:
     v['linhas'] = [(d, dm, '') for d, dm in chaves]
     for i in its: i['num_' + v['letra']] = chaves.index((i['desc'], i['dim'])) + 1
 if nao_achados:
-    V[0]['linhas'] += [(d, dm, '*') for d, dm in nao_achados]
+    VW[0]['linhas'] += [(d, dm, '*') for d, dm in nao_achados]
 
 # ---------------- geometria de elevação ----------------
 def uu(x, y, f): return x * f[1] - y * f[0]
@@ -959,7 +962,7 @@ p.insert_text((pr.x0 + pr.width / 2 - fz.get_text_length(lab, 'hebo', 8) / 2, pr
 
 # PRANCHA 4: visão geral
 n += 1; p = nova_prancha(doc, n, 'VISÃO GERAL DOS MÓVEIS')
-com_img = V
+com_img = VW
 m = len(com_img); a = AREA_IN
 _nc = 1 if m == 1 else 2 if m <= 4 else 3; _nr = -(-m // _nc)
 cel = [fz.Rect(a.x0 + (i % _nc) * a.width / _nc, a.y0 + (i // _nc) * a.height / _nr, a.x0 + (i % _nc + 1) * a.width / _nc, a.y0 + (i // _nc + 1) * a.height / _nr) for i in range(m)]
@@ -969,29 +972,30 @@ for v, c in zip(com_img, cel):
 for j in range(1, _nc): p.draw_line((a.x0 + j * a.width / _nc, AREA.y0), (a.x0 + j * a.width / _nc, AREA.y1), color=PRETO, width=0.6)
 for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.x1, a.y0 + j * a.height / _nr), color=PRETO, width=0.6)
 
-# por vista: listagem (tabela + balões na elevação + 3D) e cotas
+# por bloco: listagem de cada parede (frontal) e depois as cotas do bloco (paredes lado a lado)
 for v in V:
     GS = [geom_parede(PW[w]) for w in v['paredes']]
-    n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {v['titulo']}")
-    yb = tabela(p, v['linhas'], AREA_IN.x0, AREA_IN.y0)
-    if nao_achados and v is V[0]:
-        p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
-    render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), v['paredes'], letra=v['letra'])
-    # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela (continua na imagem grande)
-    nis = [(w, c) for w in v['paredes'] for c in nichos(PW[w])]
-    if nis:
-        y0_ = (yb + 18 if not (nao_achados and v is V[0]) else yb + 24); h_ = (AREA_IN.y1 - y0_) / len(nis)
-        for k_, (w, c) in enumerate(nis):
-            r_ = fz.Rect(AREA_IN.x0, y0_ + k_ * h_, AREA_IN.x0 + 248, y0_ + (k_ + 1) * h_ - 4)
-            p.draw_rect(r_, color=PRETO, width=0.5)
-            p.insert_text((r_.x0 + 4, r_.y0 + 10), 'DETALHE - NICHO', fontname='hebo', fontsize=7.5, color=RED)
-            # câmera virada para o lado aberto do nicho (em direção ao meio da parede)
-            fw_ = FV[PW[w]['key']]; ax_ = 1 if fw_[0] else 0
-            cm_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in PW[w]['itens']) / len(PW[w]['itens'])
-            cn_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in c) / len(c)
-            r_dir = (fw_[1], -fw_[0])  # direção "direita" da câmera frontal
-            lado = (cm_ - cn_) * r_dir[ax_]
-            render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=v['letra'], itens=c, ang=(-28 if lado > 0 else 28), dmin=2200, margem=60)
+    for s_ in v['subs']:
+        n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']}")
+        yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)
+        if nao_achados and s_ is VW[0]:
+            p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
+        render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'])
+        # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela (continua na imagem grande)
+        nis = [(w, c) for w in s_['paredes'] for c in nichos(PW[w])]
+        if nis:
+            y0_ = (yb + 18 if not (nao_achados and s_ is VW[0]) else yb + 24); h_ = (AREA_IN.y1 - y0_) / len(nis)
+            for k_, (w, c) in enumerate(nis):
+                r_ = fz.Rect(AREA_IN.x0, y0_ + k_ * h_, AREA_IN.x0 + 248, y0_ + (k_ + 1) * h_ - 4)
+                p.draw_rect(r_, color=PRETO, width=0.5)
+                p.insert_text((r_.x0 + 4, r_.y0 + 10), 'DETALHE - NICHO', fontname='hebo', fontsize=7.5, color=RED)
+                # câmera virada para o lado aberto do nicho (em direção ao meio da parede)
+                fw_ = FV[PW[w]['key']]; ax_ = 1 if fw_[0] else 0
+                cm_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in PW[w]['itens']) / len(PW[w]['itens'])
+                cn_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in c) / len(c)
+                r_dir = (fw_[1], -fw_[0])  # direção "direita" da câmera frontal
+                lado = (cm_ - cn_) * r_dir[ax_]
+                render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=c, ang=(-28 if lado > 0 else 28), dmin=2200, margem=60)
     # cotas
     n += 1; p = nova_prancha(doc, n, f"MEDIDAS E ALTURAS - {v['titulo']}")
     nc = len(GS); zm = max(G['zmax'] for G in GS)
@@ -1038,14 +1042,14 @@ except Exception:
     import time as _t; cfg['saida'] = os.path.splitext(cfg['saida'])[0] + _t.strftime('_%H%M%S') + '.pdf'; doc.save(cfg['saida'], garbage=3, deflate=True)
 
 # ---------------- QUALIDADE (nível 1, por script) ----------------
-esperado = 4 + 2 * len(V)
+esperado = 4 + len(VW) + len(V)
 q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (gerado por script)", '',
-     f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + 2 x {len(V)} vistas",
+     f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas",
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
-for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {V[0]['letra']})")
+for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {VW[0]['letra']})")
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))
-for v in V: q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem")
-q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in V for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
+for v in VW: q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem")
+q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in VW for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
 open(os.path.splitext(cfg['saida'])[0] + '_QUALIDADE.md', 'w', encoding='utf-8').write('\n'.join(q))
 print('\n'.join(q))
 for i in range(len(doc)):

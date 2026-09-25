@@ -158,7 +158,7 @@ def textura(nome):
             else:
                 full = ref if os.path.exists(ref) else os.path.join(_MAT, ref.split('MATERIAIS', 1)[-1].lstrip('/\\'))
                 if os.path.exists(full):
-                    im = _Im.open(full).convert('RGB'); im.thumbnail((512, 512)); os.makedirs(_TXD, exist_ok=True); im.save(loc, quality=82)
+                    im = _Im.open(full).convert('RGB'); im.thumbnail((1024, 1024)); os.makedirs(_TXD, exist_ok=True); im.save(loc, quality=82)
         except Exception: im = None
     _txc[nome] = im; return im
 _dm = {}; _ord = {}
@@ -235,9 +235,41 @@ ELETRO_COR = (0.72, 0.73, 0.76)
 ELETROS = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in AMB_I and p_['i'] not in MALHA_I and p_['faces']
            and len(p_['faces']) >= 10 and sorted(p_['dim'])[0] >= 40 and sorted(p_['dim'])[1] >= 150 and max(p_['dim']) <= 2200 and p_['dim'][2] >= 100
            and p_['bb'][5] <= 2300 and not (60 <= min(p_['dim'][0], p_['dim'][1]) <= 400 and p_['dim'][2] >= 1800)]
+# REGRA (João): blocos QUADRADOS (caixa simples, 12 faces) não entram — atrapalham a imagem. Fica objeto com forma
+# real (> 12 faces); em cima da pedra, só o que for baixo (cuba, cooktop: até 300 mm acima da pedra).
+_topo_pedra = [p_['bb'][5] for p_ in AMB]
+def _eletro_ok(p_):
+    if len(p_['faces']) <= 12: return False
+    for t_ in _topo_pedra:
+        if p_['bb'][2] <= t_ + 15 and p_['bb'][5] > t_ - 60: return p_['bb'][5] <= t_ + 300
+    return True
+ELETROS = [p_ for p_ in ELETROS if _eletro_ok(p_)]
 ELETRO_I = {p_['i'] for p_ in ELETROS}
 for p_ in ELETROS: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
 print('AMBIENTE (eletros/objetos):', len(ELETROS), 'peças')
+def _arestas(faces):
+    # contorno nítido: aresta de borda ou quina (normais diferentes); diagonal de triangulação não aparece
+    ed = {}; nrm = [_n(fc[0], fc[1], fc[2]) for fc in faces]
+    kk = lambda v: tuple(round(c, 0) for c in v)
+    for i_, fc in enumerate(faces):
+        for j_ in range(len(fc)):
+            a_, b_ = kk(fc[j_]), kk(fc[(j_ + 1) % len(fc)])
+            if a_ == b_: continue
+            ed.setdefault(frozenset((a_, b_)), []).append(i_)
+    out = []
+    for i_, fc in enumerate(faces):
+        fl = []
+        for j_ in range(len(fc)):
+            a_, b_ = kk(fc[j_]), kk(fc[(j_ + 1) % len(fc)])
+            fs2 = ed.get(frozenset((a_, b_)), [])
+            if a_ == b_: fl.append(False); continue
+            if len(fs2) < 2: fl.append(True); continue
+            n1, n2 = nrm[fs2[0]], nrm[fs2[1]]
+            fl.append(abs(sum(x * y for x, y in zip(n1, n2))) < 0.94)
+        out.append(fl)
+    return out
+for p_ in AMB + ELETROS + MALHA_PAR:
+    p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]; p_['ft'] = _arestas(p_['faces'])
 PAR_DXF = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in {q['i'] for q in AMB} and p_['i'] not in ELETRO_I and 60 <= min(p_['dim'][0], p_['dim'][1]) <= 400
            and max(p_['dim'][0], p_['dim'][1]) >= 100 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) < 20000]
 for p_ in AMB: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
@@ -737,10 +769,10 @@ def geom_parede(w):
     for p_ in P:   # REGRA: parede atrás dos móveis na elevação 2D (só referência, não é cotada)
         b = p_['bb']
         if p_['i'] in MALHA_I:   # paredes em peça única: só as faces do fundo (até 300 mm atrás do plano da parede)
-            for fc in p_['faces']:
+            for fc, fl in zip(p_['faces'], p_['ft']):
                 if max(abs(((w['plano'] - v[0] if f[0] else w['plano'] - v[1]) * (f[0] or f[1]))) for v in fc) > 300: continue
                 q_ = [(uu(v[0], v[1], f), v[2]) for v in fc]
-                wf.append((1e9, [(min(max(u_, umin_ - 150), umax_ + 150), min(z_, zmax_ + 100)) for u_, z_ in q_], (0.9, 0.9, 0.9), [False] * len(fc)))
+                wf.append((1e9, [(min(max(u_, umin_ - 150), umax_ + 150), min(z_, zmax_ + 100)) for u_, z_ in q_], (0.9, 0.9, 0.9), fl))
             continue
         if not (80 <= min(p_['dim'][0], p_['dim'][1]) <= 400 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) >= 300 and p_['i'] not in _usadas): continue
         if ((b[0] + b[3]) / 2 - Cc[0]) * f[0] + ((b[1] + b[4]) / 2 - Cc[1]) * f[1] < -150: continue
@@ -757,8 +789,8 @@ def geom_parede(w):
         b = p_['bb']; u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
         if prof_(b) > 1000 or u1_ < umin_ - 50 or u0_ > umax_ + 50: continue
         c0_ = PEDRA_COR if p_['i'] in AMB_I else ELETRO_COR
-        for fc in p_['faces']:
-            faces.append((dep(fc), [(cl(uu(v[0], v[1], f)), v[2]) for v in fc], c0_, [False] * len(fc)))
+        for fc, fl in zip(p_['faces'], p_['ft']):
+            faces.append((dep(fc), [(cl(uu(v[0], v[1], f)), v[2]) for v in fc], c0_, fl))
     _mi = {pi for it in w['itens'] for pi in it['pecas']}
     for it in inst:   # móveis vizinhos: cinza claro, cortados na borda
         for pi in it['pecas']:
@@ -819,7 +851,9 @@ def _ordem_pecas(fcs, bbs, cam):
             if grau[j] == 0 and j not in feito: heapq.heappush(hp, (-dist[j], j))
     return out
 
-MM_TEX = 700.0   # a largura da imagem da textura representa ~700 mm de chapa
+# REGRA (João): a imagem da textura = UMA CHAPA de MDF de 1830 mm (largura) x 2750 mm (altura, sentido do veio).
+# Cada peça usa o pedaço da chapa proporcional ao seu tamanho (peça maior que a chapa repete a chapa).
+CHAPA_L, CHAPA_A = 1830.0, 2750.0
 def _persp(dst, src_):
     # coeficientes PIL PERSPECTIVE: saída (dst) -> entrada (src_)
     A = []; B = []
@@ -841,14 +875,19 @@ def _raster3d(page, rect, fcs, T, pmat, dpi=170):
         x1_ = int(min(W_, max(a for a, _ in Q) + 1)); y1_ = int(min(H_, max(b for _, b in Q) + 1))
         if tex is not None and x1_ - x0_ >= 3 and y1_ - y0_ >= 3:
             L1 = math.dist(vs[0], vs[1]); L2 = math.dist(vs[0], vs[3])
-            mmpp = MM_TEX / tex.width
-            # veio acompanha o lado mais comprido da peça
+            sx_, sy_ = tex.width / CHAPA_L, tex.height / CHAPA_A   # px por mm da chapa
+            # veio (altura da chapa) acompanha o lado mais comprido da peça
             if L1 >= L2: corners = [vs[0], vs[3], vs[2], vs[1]]; Lw, Lh = L2, L1
             else: corners = [vs[0], vs[1], vs[2], vs[3]]; Lw, Lh = L1, L2
-            pw = max(2, min(900, int(Lw / mmpp))); ph = max(2, min(900, int(Lh / mmpp)))
-            tile = _Im.new('RGB', (pw, ph))
-            for ty in range(0, ph, tex.height):
-                for tx in range(0, pw, tex.width): tile.paste(tex, (tx, ty))
+            pw = max(2, int(Lw * sx_)); ph = max(2, int(Lh * sy_))
+            if pw <= tex.width and ph <= tex.height:
+                ox_ = (pc * 137) % max(1, tex.width - pw + 1); oy_ = (pc * 71) % max(1, tex.height - ph + 1)   # pedaço da chapa varia por peça
+                tile = tex.crop((ox_, oy_, ox_ + pw, oy_ + ph))
+            else:
+                tile = _Im.new('RGB', (pw, ph))
+                for ty in range(0, ph, tex.height):
+                    for tx in range(0, pw, tex.width): tile.paste(tex, (tx, ty))
+            if max(pw, ph) > 1400: tile = tile.resize((max(2, pw * 1400 // max(pw, ph)), max(2, ph * 1400 // max(pw, ph)))); pw, ph = tile.size
             if fs_ < 0.999: tile = tile.point(lambda v: int(v * fs_))
             iq = [q[vs.index(c3_)] for c3_ in corners]
             dst = [(px(*p2)[0] - x0_, px(*p2)[1] - y0_) for p2 in iq]
@@ -911,7 +950,8 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         f2 = FV[PW[pids[1]]['key']]; a = math.radians(22 if f[0] * f2[1] - f[1] * f2[0] >= 0 else -22)
     if ang is not None: a = math.radians(ang)
     hx = f[0] * math.cos(a) - f[1] * math.sin(a); hy = f[0] * math.sin(a) + f[1] * math.cos(a)
-    e = math.radians(9); fw = (hx * math.cos(e), hy * math.cos(e), -math.sin(e))
+    e = math.radians(kw.get('elev', 3 if (contexto and not itens) else 9))   # REGRA: listagem BEM FRONTAL (câmera quase na horizontal)
+    fw = (hx * math.cos(e), hy * math.cos(e), -math.sin(e))
     rn = math.hypot(hy, hx); r = (hy / rn, -hx / rn, 0.0)
     up = (r[1] * fw[2] - r[2] * fw[1], r[2] * fw[0] - r[0] * fw[2], r[0] * fw[1] - r[1] * fw[0])
     dot = lambda a_, b_: a_[0] * b_[0] + a_[1] * b_[1] + a_[2] * b_[2]
@@ -940,7 +980,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             if itens: continue   # detalhe (nicho/costas): só os móveis, sem pedra/eletros
             if (dentro_(b, p_['i']) if ctx else all(b[k] <= E[k + 3] and b[k + 3] >= E[k] for k in range(3))):
                 c0_ = PEDRA_COR if p_['i'] in AMB_I else ELETRO_COR
-                for fc in p_['faces']: src.append((fc, c0_, [False] * len(fc), 1, len(shell)))
+                for fc, fl in zip(p_['faces'], p_['ft']): src.append((fc, c0_, fl, 1, len(shell)))
                 shell.append(b)
             continue
         if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: 3D só com MDF (chapas); suportes, dobradiças, cabideiros, pés = fora
@@ -952,11 +992,11 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
     if ctx and MALHA_PAR:
         for p_ in MALHA_PAR:
-            for fc in p_['faces']:
+            for fc, fl in zip(p_['faces'], p_['ft']):
                 c_ = [sum(v[k_] for v in fc) / len(fc) for k_ in range(3)]
                 if min((w0['plano'] - v[axd]) * sg for v in fc) > 1300: continue
                 if c_[axl] < U[axl] - 1800 or c_[axl] > U[axl + 3] + 1800: continue
-                src.append((fc, (0.94, 0.94, 0.94), [False] * len(fc), 0, -1))
+                src.append((fc, (0.94, 0.94, 0.94), fl, 0, -1))
     if ctx and (PAR_DXF or MALHA_PAR):
         # REGRA (João): paredes reais do DXF que compõem o L (fundo e laterais), com janela/abertura; tira só as que ficam na frente
         for p_ in PAR_DXF:
@@ -1216,11 +1256,28 @@ for v in V:
         nis = [(w, c, 'nicho') for w, c in nis] + cts
         if nis:
             y0_ = (yb + 18 if not (nao_achados and s_ is VW[0]) else yb + 24)
-            nc_ = 1 if (AREA_IN.y1 - y0_) / len(nis) >= 120 else 2; nr_ = -(-len(nis) // nc_)
-            h_ = (AREA_IN.y1 - y0_) / nr_; w_ = 248 / nc_
-            for k_, (w, c, tp_) in enumerate(nis):
-                cx_, cy_ = k_ % nc_, k_ // nc_
-                r_ = fz.Rect(AREA_IN.x0 + cx_ * w_, y0_ + cy_ * h_, AREA_IN.x0 + (cx_ + 1) * w_ - (4 if nc_ > 1 else 0), y0_ + (cy_ + 1) * h_ - 4)
+            # quadro com o FORMATO do detalhe (nicho largo = quadro largo e baixo); largos ocupam a linha inteira
+            def _asp(w, c):
+                ax_ = 1 if FV[PW[w]['key']][0] else 0
+                la = max(i['bb'][ax_ + 3] for i in c) - min(i['bb'][ax_] for i in c); al = max(i['bb'][5] for i in c) - min(i['bb'][2] for i in c)
+                return max(0.25, min(1.6, al / max(la, 1)))
+            itens_q = [(w, c, tp_, _asp(w, c)) for w, c, tp_ in nis]
+            linhas_q = []; lin = []
+            for it_ in itens_q:
+                if it_[3] < 0.6: linhas_q.append([it_])
+                else:
+                    lin.append(it_)
+                    if len(lin) == 2: linhas_q.append(lin); lin = []
+            if lin: linhas_q.append(lin)
+            alt = [max(248 / len(l_) * it_[3] + 18 for it_ in l_) for l_ in linhas_q]
+            fat = min(1.0, (AREA_IN.y1 - y0_) / sum(alt)); yy = y0_
+            quadros = []
+            for l_, a_ in zip(linhas_q, alt):
+                w_ = 248 / len(l_)
+                for k2, it_ in enumerate(l_):
+                    quadros.append((it_, fz.Rect(AREA_IN.x0 + k2 * w_, yy, AREA_IN.x0 + (k2 + 1) * w_ - (4 if len(l_) > 1 else 0), yy + a_ * fat - 4)))
+                yy += a_ * fat
+            for (w, c, tp_, _a), r_ in quadros:
                 p.draw_rect(r_, color=PRETO, width=0.5)
                 p.insert_text((r_.x0 + 4, r_.y0 + 10), 'DETALHE - NICHO' if tp_ == 'nicho' else 'DETALHE - COSTAS', fontname='hebo', fontsize=7.5, color=RED)
                 if tp_ == 'costas':

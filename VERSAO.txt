@@ -1,7 +1,11 @@
-MOTOR DE CADERNOS COMPIERE - v24 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v25 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v25 (25/09/2026) - PC: C:\CLAUDE\motor v25 (v24 fica de reserva)
+ - DIVISÓRIA RIPADA, prancha da LATERAL: a tabela e os balões trazem SÓ as peças que APARECEM nessa imagem
+   (buffer de visibilidade: peça com 15%+ da área à vista), com numeração própria da prancha
 
 v24 (25/09/2026) - PC: C:\CLAUDE\motor v24 (v23 fica de reserva)
  - DIVISÓRIA RIPADA: 2ª imagem da listagem = LATERAL RETA (90°) pelo lado da perna do L (mostra as ripas do L), não diagonal

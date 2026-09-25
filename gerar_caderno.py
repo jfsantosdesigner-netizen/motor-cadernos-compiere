@@ -1549,6 +1549,26 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     k = min((rect.width - mgf) / (x1 - x0), (rect.height - mgf) / (y1 - y0))
     ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
     T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
+    if kw.get('visiveis') is not None and _Im is not None:
+        # REGRA (v25): quais peças APARECEM nesta imagem (buffer de identificação, desenho na mesma ordem das faces)
+        _s = 2.0; _W = max(1, int(rect.width * _s)); _H = max(1, int(rect.height * _s))
+        _ib = _Im.new('I', (_W, _H), 0); _dr = _ImD.Draw(_ib)
+        for f_ in fcs:
+            Q_ = [((T(x_, y_)[0] - rect.x0) * _s, (T(x_, y_)[1] - rect.y0) * _s) for x_, y_ in f_[2]]
+            if len(Q_) >= 3: _dr.polygon(Q_, fill=(f_[5] + 1) if f_[5] is not None and f_[5] >= 0 else 0)
+        _vv, _cc = _np.unique(_np.asarray(_ib), return_counts=True)
+        _bx = {}
+        for f_ in fcs:
+            if f_[5] is None or f_[5] < 0: continue
+            for x_, y_ in f_[2]:
+                px_, py_ = T(x_, y_); b_ = _bx.setdefault(f_[5], [px_, py_, px_, py_])
+                b_[0] = min(b_[0], px_); b_[1] = min(b_[1], py_); b_[2] = max(b_[2], px_); b_[3] = max(b_[3], py_)
+        for v_, c_ in zip(_vv, _cc):
+            pc_ = int(v_) - 1
+            if v_ <= 0 or pc_ not in _pidx or pc_ not in _bx: continue
+            b_ = _bx[pc_]; area_ = max(1.0, (b_[2] - b_[0]) * (b_[3] - b_[1]) * _s * _s)
+            if c_ >= 40 and c_ / area_ >= 0.15: kw['visiveis'].add(_pidx[pc_])   # peça aparece DE VERDADE (15%+ dela)
+        if kw.get('so_visiveis'): return
     if _Im is not None and cfg.get('textura', True) and any(textura(m_) for m_ in _pmat.values()):
         _raster3d(page, rect, fcs, T, _pmat)
     else:
@@ -1794,9 +1814,22 @@ for v in V:
         lado_ = (sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in dd_) / len(dd_) - cm_) * rd_[ax_] if dd_ else 1
         for ang_ in (0, (90 if lado_ > 0 else -90)):   # REGRA (v24, João): 2ª imagem = LATERAL RETA (90°), não diagonal
             n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {v['titulo']}")
-            tabela(p, v['linhas'], AREA_IN.x0, AREA_IN.y0)
-            render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), v['paredes'], letra=v['letra'], itens=its_,
-                     ang=ang_, elev=6, dmin=5200, margem=60, isolado=True)
+            r_img = fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1)
+            if ang_ == 0:
+                tabela(p, v['linhas'], AREA_IN.x0, AREA_IN.y0)
+                render3d(p, r_img, v['paredes'], letra=v['letra'], itens=its_, ang=ang_, elev=6, dmin=5200, margem=60, isolado=True)
+                continue
+            # REGRA (v25, João): a LATERAL lista SÓ as peças que APARECEM nela (numeração própria desta prancha)
+            _vis = set(); _tmp = fz.open(); _tp = _tmp.new_page(width=p.rect.width, height=p.rect.height)
+            render3d(_tp, r_img, v['paredes'], itens=its_, ang=ang_, elev=6, dmin=5200, margem=60, isolado=True, visiveis=_vis, so_visiveis=True)
+            its_v = [i for i in its_ if any(pi in _vis for pi in i['pecas'])] or its_
+            lt_l = v['letra'] + 'L'; chv_l = []
+            for i in sorted(its_v, key=lambda i: i['n']):
+                if (i['desc'], i['dim']) not in chv_l: chv_l.append((i['desc'], i['dim']))
+            for i in its_: i.pop('num_' + lt_l, None)
+            for i in its_v: i['num_' + lt_l] = chv_l.index((i['desc'], i['dim'])) + 1
+            tabela(p, [(d, dm, '') for d, dm in chv_l], AREA_IN.x0, AREA_IN.y0)
+            render3d(p, r_img, v['paredes'], letra=lt_l, itens=its_, ang=ang_, elev=6, dmin=5200, margem=60, isolado=True)
     for s_ in ([] if v.get('divisoria') else v['subs']):
         n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']}")
         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)

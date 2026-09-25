@@ -182,8 +182,15 @@ livres = list(grupos)
 for cv in cfg['vistas']:
     g = next((g for g in livres if any(cv['ref'] in f"{i['desc']} {i['dim']}" for w in g for i in PW[w]['itens'])), None)
     if g: livres.remove(g); V.append(dict(cv, paredes=sorted(g, key=lambda w: -len(PW[w]['itens']))))
-letras = 'ABCDEFGH'
-for g in livres: V.append(dict(letra=letras[len(V)], img3d=None, paredes=sorted(g, key=lambda w: -len(PW[w]['itens']))))
+letras = 'ABCDEFGHIJKL'
+# REGRA (João): UMA VISTA POR PAREDE (frontal 2D de verdade, listagem e cotas pegam todos os móveis daquela parede).
+# Ordem: segue a sequência dos grupos (paredes vizinhas juntas); dentro do grupo, a parede maior primeiro.
+# Ex.: cozinha em dois "L" -> A (parede maior), B (a perninha do L), C (outra parede maior), D (a outra perninha).
+_larg = lambda w: max(max(i['bb'][3] for i in PW[w]['itens']) - min(i['bb'][0] for i in PW[w]['itens']),
+                      max(i['bb'][4] for i in PW[w]['itens']) - min(i['bb'][1] for i in PW[w]['itens']))
+for g in livres:
+    for w in sorted(g, key=lambda w: -_larg(w)):
+        V.append(dict(letra=letras[len(V)], img3d=None, paredes=[w]))
 
 # listagem de cada vista: módulos primeiro, depois componentes; mesmo item = mesma linha
 for v in V:
@@ -712,7 +719,7 @@ def render3d(page, rect, pids, letra=None, **kw):
     up = (r[1] * fw[2] - r[2] * fw[1], r[2] * fw[0] - r[0] * fw[2], r[0] * fw[1] - r[1] * fw[0])
     dot = lambda a_, b_: a_[0] * b_[0] + a_[1] * b_[1] + a_[2] * b_[2]
     tc = ((U[0] + U[3]) / 2, (U[1] + U[4]) / 2, (U[2] + U[5]) / 2)
-    D = max(U[3] - U[0], U[4] - U[1], U[5] - U[2]) * 1.9
+    D = max(max(U[3] - U[0], U[4] - U[1], U[5] - U[2]) * 1.9, 4200)  # parede pequena: câmera não chega perto demais (sem distorção)
     cam = (tc[0] - fw[0] * D, tc[1] - fw[1] * D, tc[2] - fw[2] * D)
     cor = {}
     for i in inst:
@@ -923,12 +930,13 @@ p.insert_text((pr.x0 + pr.width / 2 - fz.get_text_length(lab, 'hebo', 8) / 2, pr
 n += 1; p = nova_prancha(doc, n, 'VISÃO GERAL DOS MÓVEIS')
 com_img = V
 m = len(com_img); a = AREA_IN
-cel = [a] if m == 1 else ([fz.Rect(a.x0, a.y0, a.x0 + a.width / 2, a.y1), fz.Rect(a.x0 + a.width / 2, a.y0, a.x1, a.y1)] if m == 2 else
-      [fz.Rect(a.x0 + (i % 2) * a.width / 2, a.y0 + (i // 2) * a.height / 2, a.x0 + (i % 2 + 1) * a.width / 2, a.y0 + (i // 2 + 1) * a.height / 2) for i in range(m)])
+_nc = 1 if m == 1 else 2 if m <= 4 else 3; _nr = -(-m // _nc)
+cel = [fz.Rect(a.x0 + (i % _nc) * a.width / _nc, a.y0 + (i // _nc) * a.height / _nr, a.x0 + (i % _nc + 1) * a.width / _nc, a.y0 + (i // _nc + 1) * a.height / _nr) for i in range(m)]
 for v, c in zip(com_img, cel):
     (encaixa(p, v['img3d'], fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4)) if v.get('img3d') else render3d(p, fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4), v['paredes']))
     p.insert_text((c.x0 + 6, c.y0 + 11), f"VISTA {v['letra']}", fontname='hebo', fontsize=10, color=RED)
-if m >= 2: p.draw_line((a.x0 + a.width / 2, AREA.y0), (a.x0 + a.width / 2, AREA.y1), color=PRETO, width=0.6)
+for j in range(1, _nc): p.draw_line((a.x0 + j * a.width / _nc, AREA.y0), (a.x0 + j * a.width / _nc, AREA.y1), color=PRETO, width=0.6)
+for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.x1, a.y0 + j * a.height / _nr), color=PRETO, width=0.6)
 
 # por vista: listagem (tabela + balões na elevação + 3D) e cotas
 for v in V:

@@ -1,7 +1,15 @@
-MOTOR DE CADERNOS COMPIERE - v22 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v23 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v23 (25/09/2026) - vai para o PC (C:\CLAUDE\motor v23), aprovada pelo João
+ - PLANTA (regra geral, todos os projetos): UMA cota por parede = COMPRIMENTO TOTAL dos móveis (planta limpa)
+ - MATERIAIS: o motor procura cores/texturas SOZINHO na pasta MATERIAIS dentro dele (C:\CLAUDE\motor vN\MATERIAIS);
+   depois no config; por último C:\CLAUDE\MATERIAIS
+ - PUXADORES: o DXF do Promob não traz o puxador (só dobradiças). Regra que gerava puxador pela dobradiça ficou
+   DESLIGADA (posições erradas, João); liga só com "puxadores_regra": true no config
+ - PROIBIDO usar imagem/conteúdo dos PDFs do João no caderno: tudo sai do XML + DXF pelo motor
 
 v22 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
  - CONDIÇÃO "PERNA DO L" (planta do João): todo trecho com móvel tem VISTA. Peças de uma parede que vão > 300 mm além da

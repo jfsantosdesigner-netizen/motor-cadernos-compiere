@@ -96,7 +96,11 @@ def _norm(t):
     t = _ud.normalize('NFKD', t).encode('ascii', 'ignore').decode().lower()
     return re.sub(r'[^a-z0-9]+', ' ', t).strip()
 _MD = os.path.dirname(os.path.abspath(__file__))
-_MAT = cfg.get('materiais') or r'C:\CLAUDE\MATERIAIS'
+# REGRA (v23, João): o motor procura as cores/texturas SOZINHO, primeiro na pasta MATERIAIS DENTRO do motor
+# (C:\CLAUDE\motor vN\MATERIAIS); depois no caminho do config; por último C:\CLAUDE\MATERIAIS.
+_MAT = next((c_ for c_ in (os.path.join(_MD, 'MATERIAIS'),
+                           (cfg.get('materiais') if cfg.get('materiais') and os.path.isabs(cfg.get('materiais')) else os.path.join(_MD, cfg.get('materiais') or 'MATERIAIS')),
+                           r'C:\CLAUDE\MATERIAIS') if os.path.isdir(c_)), os.path.join(_MD, 'MATERIAIS'))
 _MI = os.path.join(_MD, 'materiais_index.json')
 _MC = os.path.join(_MD, 'materiais_cores.json')  # [caminho relativo a MATERIAIS, nome, [r,g,b]]: cores prontas, dispensa a pasta MATERIAIS
 _rgbx = {}
@@ -1288,6 +1292,74 @@ def rodapes(w):
     if not any((i['bb'][ad + 3] - i['bb'][ad]) > 150 for i in rs): return []
     return rs
 
+# ===== PUXADORES (v23, João): o DXF do Promob NÃO traz o puxador; o motor GERA pela regra =====
+# Tipo/medida/cor = item "Puxador..." do XML (ex.: Linear Pino Champagne 200 x 15,8 x 37,5). Puxador de perfil/cava/aba = sem barra.
+# Porta/frente = chapa fina na frente do módulo (geometria). Porta de giro: puxador VERTICAL do lado OPOSTO às dobradiças
+# (dobradiças do DXF), 40 mm da borda; alto (armário) na altura da mão (~1,05 m), balcão perto do topo, aéreo perto de baixo.
+# Gaveta/basculante (mais larga que alta): HORIZONTAL centrado, perto do topo (aéreo: perto de baixo).
+def _puxador_xml():
+    for e in ET.parse(cfg['xml']).iter('ITEM'):
+        d_ = e.get('DESCRIPTION', '')
+        if d_.lower().startswith('puxador'):
+            if re.search(r'perfil|cava|aba|embutid|usinad', d_, re.I): return None
+            try: L_ = float(e.get('WIDTH') or 150)
+            except Exception: L_ = 150.0
+            n_ = d_.lower()
+            cor_ = (0.80, 0.70, 0.52) if 'champ' in n_ else (0.83, 0.68, 0.33) if ('dourad' in n_ or 'ouro' in n_) else \
+                   (0.12, 0.12, 0.12) if 'preto' in n_ else (0.62, 0.52, 0.46) if 'rose' in n_ else (0.74, 0.74, 0.76)
+            return dict(L=max(60.0, min(L_, 1200.0)), cor=cor_)
+    return None
+PUX_TIPO = _puxador_xml() if cfg.get('xml') else None
+_DOBR = [p_ for p_ in P if (lambda d: 12 <= d[0] <= 32 and 40 <= d[1] <= 65 and 65 <= d[2] <= 95)(sorted(p_['dim']))]
+def _gerar_puxadores():
+    out = []
+    if not PUX_TIPO: return out
+    L_ = PUX_TIPO['L']; ja = set()
+    for w in paredes:
+        f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
+        perto = lambda bb: min(bb[ad] * sg_, bb[ad + 3] * sg_)
+        for m in w['itens']:
+            if m['tipo'] != 'mod': continue
+            mb = m['bb']; fr = perto(mb)
+            for p_ in P:
+                b = p_['bb']
+                if p_['i'] in ja or b[ad + 3] - b[ad] > 30 or (b[al + 3] - b[al]) < 100 or (b[5] - b[2]) < 100: continue
+                if not (fr - 40 <= perto(b) <= fr + 5): continue
+                if b[al] < mb[al] - 30 or b[al + 3] > mb[al + 3] + 30 or b[2] < mb[2] - 30 or b[5] > mb[5] + 30: continue
+                ja.add(p_['i'])
+                du, dz = b[al + 3] - b[al], b[5] - b[2]
+                face = b[ad] if sg_ > 0 else b[ad + 3]; sai = -sg_     # lado de fora da porta
+                if dz >= du:   # porta de giro
+                    hs = [h for h in _DOBR if b[al] - 40 <= (h['bb'][al] + h['bb'][al + 3]) / 2 <= b[al + 3] + 40
+                          and b[2] <= (h['bb'][2] + h['bb'][5]) / 2 <= b[5] and 0 <= (min(h['bb'][ad] * sg_, h['bb'][ad + 3] * sg_) - perto(b)) <= 160]
+                    if not hs: continue
+                    hc = sum((h['bb'][al] + h['bb'][al + 3]) / 2 for h in hs) / len(hs)
+                    uc = b[al + 3] - 40 if abs(hc - b[al]) < abs(hc - b[al + 3]) else b[al] + 40
+                    Lr = min(L_, dz - 120)
+                    if dz >= 1200: zc = min(max(1050, b[2] + Lr / 2 + 80), b[5] - Lr / 2 - 80)
+                    elif b[5] <= 1100: zc = b[5] - 60 - Lr / 2
+                    elif b[2] >= 1200: zc = b[2] + 60 + Lr / 2
+                    else: zc = (b[2] + b[5]) / 2
+                    seg = dict(eixo='z', c_al=uc, z0=zc - Lr / 2, z1=zc + Lr / 2)
+                else:          # gaveta / basculante
+                    Lr = min(L_, du - 120); uc = (b[al] + b[al + 3]) / 2
+                    zc = b[2] + 40 if b[2] >= 1200 else b[5] - 40
+                    seg = dict(eixo='u', u0=uc - Lr / 2, u1=uc + Lr / 2, zc=zc)
+                caixas = []
+                def cx(a0, a1, dd0, dd1, z0, z1):
+                    bb = [0.0] * 6; bb[al], bb[al + 3] = a0, a1; bb[2], bb[5] = z0, z1
+                    p0, p1 = face + sai * dd0, face + sai * dd1; bb[ad], bb[ad + 3] = min(p0, p1), max(p0, p1); return bb
+                if seg['eixo'] == 'z':
+                    u = seg['c_al']
+                    caixas.append(cx(u - 7.9, u + 7.9, 27, 37.5, seg['z0'], seg['z1']))                 # barra
+                    for zz in (seg['z0'] + 6, seg['z1'] - 16): caixas.append(cx(u - 5, u + 5, 0, 27, zz, zz + 10))   # pés
+                else:
+                    z = seg['zc']
+                    caixas.append(cx(seg['u0'], seg['u1'], 27, 37.5, z - 7.9, z + 7.9))
+                    for uu_ in (seg['u0'] + 6, seg['u1'] - 16): caixas.append(cx(uu_, uu_ + 10, 0, 27, z - 5, z + 5))
+                out.append(dict(porta=p_['i'], caixas=caixas))
+    return out
+
 def tem_porta(m, w):
     # porta/frente/basculante = chapa fina (<= 30 mm na profundidade) na FRENTE do módulo cobrindo >= 40% da face frontal
     f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
@@ -1404,6 +1476,11 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             _pmat[len(shell)] = p_.get('mat'); _pidx[len(shell)] = p_['i']
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
             shell.append(b)
+    for px_ in PUXADORES:   # REGRA (v23): puxador aparece junto com a porta dele
+        if px_['porta'] in _pidx.values():
+            for bx_ in px_['caixas']:
+                for fc in caixa_faces(bx_): src.append((fc, PUX_TIPO['cor'], [True] * 4, 1, len(shell)))
+                shell.append(bx_)
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
     if ctx and MALHA_PAR:
         _cob = []; _ilha = U[5] <= 1200   # móvel baixo solto (ilha/bancada): sem parede inventada nem laterais distantes
@@ -1519,6 +1596,9 @@ _todas = [e.get('DESCRIPTION', '') for e in _ET.parse(cfg['xml']).iter('ITEM')] 
 def _pega(rx):
     v = sorted(set(re.sub(r'\s+', ' ', x).strip() for x in _todas if re.search(rx, x, re.I)))
     return ', '.join(v[:3]) if v else 'Não possui'
+# puxador por regra DESLIGADO (João: posições erradas). Só liga com "puxadores_regra": true no config.
+PUXADORES = _gerar_puxadores() if cfg.get('puxadores_regra') else []
+print('PUXADORES:', len(PUXADORES), '(regra desligada; o DXF não traz puxador)' if not PUXADORES else 'gerados')
 # ---------------- montagem ----------------
 doc = fz.open(); n = 0; relat = []
 n += 1; p = nova_prancha(doc, n, 'CAPA')
@@ -1658,16 +1738,16 @@ for z, q, cor, ft in fcs:
 sh.commit()
 for (a_, b_) in _linhas_par:
     p.draw_line((PX(a_[0]), PY(a_[1])), (PX(b_[0]), PY(b_[1])), color=PRETO, width=0.9)
-for w in paredes:          # cotas da planta: por parede, do lado de fora
+for w in paredes:          # REGRA GERAL (v23, João): planta LIMPA = UMA cota por parede, o COMPRIMENTO TOTAL dos móveis
     f = FV[w['key']]; its = w['itens']
     if w['key'][0] == 'x':
-        vals = [v for i in its for v in (i['bb'][1], i['bb'][4])]
-        xl = PX(w['plano']) + (14 if f[0] > 0 else -14)
-        cadeia_v(p, vals, xl, None, PY, fs=6)
+        vals = [min(i['bb'][1] for i in its), max(i['bb'][4] for i in its)]
+        xl = PX(w['plano']) + (16 if f[0] > 0 else -16)
+        cadeia_v(p, vals, xl, PX(w['plano']), PY, fs=7)
     else:
-        vals = [v for i in its for v in (i['bb'][0], i['bb'][3])]
-        yl = PY(w['plano']) + (14 if f[1] < 0 else -14)
-        cadeia_h(p, vals, yl, yl, PX, fs=6)
+        vals = [min(i['bb'][0] for i in its), max(i['bb'][3] for i in its)]
+        yl = PY(w['plano']) + (16 if f[1] < 0 else -16)
+        cadeia_h(p, vals, yl, PY(w['plano']), PX, fs=7)
 _circ = []
 for v in V:                # setas das vistas (uma por parede); se encostar em outra, desliza ao longo da parede
   for wid, letra_ in zip(v['paredes'], v['letras']):

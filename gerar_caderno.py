@@ -484,6 +484,55 @@ def cotar(page, G, ox, fy, k):
 
 # REGRA (v16, João): VISTA LATERAL do móvel na MESMA prancha da cota frontal (página dividida: frontal à esquerda,
 # lateral à direita, mesma escala). Mostra a PROFUNDIDADE (a partir da parede) e as alturas; parede do fundo em cinza.
+def _desenho2d(page, faces, XY):
+    """REGRA (v16, João): cotas 2D (frontal e lateral) com as MESMAS cores e TEXTURAS do 3D (madeirado com veio).
+    Chapa 1830 x 2750 mm, veio no sentido do comprimento da peça. Sem Pillow/textura = cor lisa (vetor)."""
+    its = []
+    for f_ in faces:
+        pts, cor, ft = f_[1], f_[2], f_[3]
+        q = [XY(a, b) for a, b in pts]
+        if area2(q) < 0.15: continue
+        its.append((q, cor, ft, f_[4] if len(f_) > 4 else None, f_[5] if len(f_) > 5 else 0, pts))
+    if not its: return
+    if _Im is None or not cfg.get('textura', True) or not any(textura(m_) for _, _, _, m_, _, _ in its if m_):
+        sh = page.new_shape()
+        for q, cor, ft, _, _, _ in its:
+            sh.draw_polyline(q + [q[0]]); sh.finish(color=cor, fill=cor, width=0.45, closePath=True)
+            if any(ft):
+                for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
+                    if f_: sh.draw_line(a_, b_)
+                sh.finish(color=(0.2, 0.2, 0.2), width=0.3, closePath=False)
+        sh.commit(); return
+    R = fz.Rect(min(x for q in [i[0] for i in its] for x, _ in q), min(y for q in [i[0] for i in its] for _, y in q),
+                max(x for q in [i[0] for i in its] for x, _ in q), max(y for q in [i[0] for i in its] for _, y in q)) & page.rect
+    if R.is_empty: return
+    s_ = 250 / 72.0; W_ = max(1, int(R.width * s_)); H_ = max(1, int(R.height * s_))
+    img = _Im.new('RGBA', (W_, H_), (0, 0, 0, 0)); dr = _ImD.Draw(img)
+    for q, cor, ft, mat, pc, pts in its:
+        Q = [((x - R.x0) * s_, (y - R.y0) * s_) for x, y in q]
+        tex = textura(mat) if mat else None
+        x0_ = int(max(0, min(a for a, _ in Q))); y0_ = int(max(0, min(b for _, b in Q)))
+        x1_ = int(min(W_, max(a for a, _ in Q) + 1)); y1_ = int(min(H_, max(b for _, b in Q) + 1))
+        if tex is not None and x1_ - x0_ >= 3 and y1_ - y0_ >= 3:
+            Lu = max(a for a, _ in pts) - min(a for a, _ in pts); Lz = max(b for _, b in pts) - min(b for _, b in pts)
+            sx_, sy_ = tex.width / CHAPA_L, tex.height / CHAPA_A
+            deit = Lu > Lz                                   # peça deitada: veio na horizontal
+            Lw, Lh = (Lz, Lu) if deit else (Lu, Lz)
+            pw = max(2, min(tex.width, int(Lw * sx_))); ph = max(2, min(tex.height, int(Lh * sy_)))
+            ox_ = (pc * 137) % max(1, tex.width - pw + 1); oy_ = (pc * 71) % max(1, tex.height - ph + 1)
+            tile = tex.crop((ox_, oy_, ox_ + pw, oy_ + ph))
+            if deit: tile = tile.rotate(90, expand=True)
+            tile = tile.resize((x1_ - x0_, y1_ - y0_)).convert('RGBA')
+            mask = _Im.new('L', tile.size, 0); _ImD.Draw(mask).polygon([(a - x0_, b - y0_) for a, b in Q], fill=255)
+            img.paste(tile, (x0_, y0_), mask)
+        else:
+            dr.polygon(Q, fill=tuple(int(255 * v) for v in cor) + (255,))
+        for (a_, b_), fl_ in zip(zip(Q, Q[1:] + Q[:1]), ft):
+            if fl_: dr.line([a_, b_], fill=(50, 50, 50, 255), width=max(1, int(0.3 * s_)))
+    import io as _io
+    bio = _io.BytesIO(); img.save(bio, format='PNG', optimize=True)
+    page.insert_image(R, stream=bio.getvalue())
+
 def geom_lateral(w):
     f = FV[w['key']]; axd = 0 if f[0] else 1; sg = f[axd]; pl = w['plano']
     H = lambda v: (pl - v[axd]) * sg          # profundidade: 0 na parede, cresce para dentro do ambiente
@@ -494,7 +543,7 @@ def geom_lateral(w):
             sd_ = sorted(P[pi]['dim'])
             if sd_[1] < 50 or sd_[0] > 60: continue
             for uq, nv, ft in P[pi]['fq']:
-                faces.append((sum(uu(v[0], v[1], f) for v in uq) / len(uq), [(H(v), v[2]) for v in uq], P[pi].get('rgb', cor), ft))
+                faces.append((sum(uu(v[0], v[1], f) for v in uq) / len(uq), [(H(v), v[2]) for v in uq], P[pi].get('rgb', cor), ft, P[pi].get('mat'), pi))
         b = it['bb']; h0, h1 = sorted((H((b[0], b[1])), H((b[3], b[4]))))
         boxes.append(dict(it=it, h0=max(h0, 0), h1=h1, z0=b[2], z1=b[5]))
     faces.sort(key=lambda t: t[0])            # vista pelo lado de u maior: o mais perto por último
@@ -506,14 +555,9 @@ def desenhar_lateral(page, L, ox, fy, k, ztop):
     Y = lambda z: fy - z * k
     sh = page.new_shape()
     sh.draw_rect(fz.Rect(X(-L['esp']), Y(ztop), X(0), fy)); sh.finish(color=(0.2, 0.2, 0.2), fill=(0.9, 0.9, 0.9), width=0.4)
-    for dep, pts, cor, ft in L['faces']:
-        q = [(X(h), Y(z)) for h, z in pts]
-        if area2(q) < 0.15: continue
-        sh.draw_polyline(q + [q[0]]); sh.finish(color=cor, fill=cor, width=0.45, closePath=True)
-        if any(ft):
-            for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
-                if f_: sh.draw_line(a_, b_)
-            sh.finish(color=(0.2, 0.2, 0.2), width=0.3, closePath=False)
+    sh.commit()
+    _desenho2d(page, L['faces'], lambda h, z: (X(h), Y(z)))
+    sh = page.new_shape()
     sh.draw_line((X(-L['esp']) - 6, fy), (X(L['hmax'] + 300), fy)); sh.finish(color=PRETO, width=0.9)
     sh.commit()
 
@@ -689,15 +733,8 @@ def geom_parede(w):
 def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
     X = lambda u: ox + (u - G['umin']) * k
     Y = lambda z: fy - z * k
+    _desenho2d(page, G['faces'], lambda u, z: (X(u), Y(z)))
     sh = page.new_shape()
-    for dep, pts, cor, ft in G['faces']:
-        q = [(X(u), Y(z)) for u, z in pts]
-        if area2(q) < 0.15: continue
-        sh.draw_polyline(q + [q[0]]); sh.finish(color=cor, fill=cor, width=0.45, closePath=True)
-        if any(ft):   # só traça quando há aresta de contorno (senão o PDF repetia o contorno da triangulação)
-            for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
-                if f_: sh.draw_line(a_, b_)
-            sh.finish(color=(0.2, 0.2, 0.2), width=0.3, closePath=False)
     sh.draw_line((X(G.get('vmin', G['umin'])) - 6, fy), (X(G.get('vmax', G['umax'])) + 6, fy)); sh.finish(color=PRETO, width=0.9)
     sh.commit()
 
@@ -851,7 +888,7 @@ def geom_parede(w):
             sd_ = sorted(P[pi]['dim'])
             if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: só MDF (sem dobradiças/suportes/cabideiros)
             for uq, nv, ft in P[pi]['fq']:
-                faces.append((dep(uq), [(uu(v[0], v[1], f), v[2]) for v in uq], P[pi].get('rgb', cor), ft))
+                faces.append((dep(uq), [(uu(v[0], v[1], f), v[2]) for v in uq], P[pi].get('rgb', cor), ft, P[pi].get('mat'), pi))
         u0, z0, u1, z1 = geo.caixa_elev(it['bb'], f)
         boxes.append(dict(it=it, u0=u0, z0=z0, u1=u1, z1=z1))
     Ub = list(w['itens'][0]['bb'])

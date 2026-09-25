@@ -1,7 +1,11 @@
-MOTOR DE CADERNOS COMPIERE - v16 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v17 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v17 (25/09/2026) - nuvem, aguardando aprovação do João (7 projetos regerados)
+ - COTAS 2D (frontal e lateral) com as MESMAS cores e TEXTURAS do 3D (madeirado com veio, mármore): chapa 1830 x 2750,
+   veio no comprimento da peça. Cotas continuam em vetor por cima.
 
 v16 (25/09/2026) - nuvem, aguardando aprovação do João (7 projetos regerados)
  - COTAS: parede sozinha na prancha -> prancha dividida: cota FRONTAL à esquerda e VISTA LATERAL do móvel à direita,

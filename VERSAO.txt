@@ -1,9 +1,14 @@
-MOTOR DE CADERNOS COMPIERE - v13 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v14 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
 
-v13 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC (4 projetos regerados)
+v14 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC (4 projetos regerados)
+ - NICHO = estrutura ABERTA, SEM PORTA (porta/basculante/gaveta), com ou sem prateleira. Armário com porta NUNCA é nicho
+   (sai a regra "nicho suspenso"). Porta detectada pela geometria: chapa fina na frente cobrindo >= 40% do módulo
+ - módulo aberto (até 2 m x 1,2 m) + tamponamentos encostados = detalhe; grupos que se encostam viram um detalhe só
+
+v13 (25/09/2026) - instalada no PC (C:\CLAUDE\motor v13)
  - planta: paredes em peça única desenhadas pelas faces verticais (vãos de porta/janela abertos)
  - 3D: parede real que fica NA FRENTE do fundo dos móveis não entra (não esconde móvel)
  - 3D: sem parede real atrás de móvel ALTO (cobre < metade) -> parede de fundo de referência

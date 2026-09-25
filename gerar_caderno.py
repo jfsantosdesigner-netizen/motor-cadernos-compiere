@@ -927,28 +927,46 @@ def costas(w):
         if tapa: out.append(i)
     return out
 
-def suspensos(w):
-    # REGRA (João): NICHO SUSPENSO = módulo alto (base >= 1,40 m) sem móvel embaixo em >= 70% da largura
-    # (ex.: armário em cima da geladeira) + tamponamentos/painéis encostados nele -> vira DETALHE.
+def tem_porta(m, w):
+    # porta/frente/basculante = chapa fina (<= 30 mm na profundidade) na FRENTE do módulo cobrindo >= 40% da face frontal
+    f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
+    perto = lambda bb: min(bb[ad] * sg_, bb[ad + 3] * sg_)
+    mb = m['bb']; fr = perto(mb); area_ = (mb[al + 3] - mb[al]) * (mb[5] - mb[2]); cob = 0.0
+    for p_ in P:
+        b = p_['bb']
+        if b[ad + 3] - b[ad] > 30 or (b[al + 3] - b[al]) < 100 or (b[5] - b[2]) < 100: continue
+        if not (fr - 40 <= perto(b) <= fr + 25): continue
+        ov = max(0, min(b[al + 3], mb[al + 3]) - max(b[al], mb[al])) * max(0, min(b[5], mb[5]) - max(b[2], mb[2]))
+        cob += ov
+    return cob >= 0.4 * area_
+
+def detalhes(w):
+    # nichos de painéis + módulos abertos; grupos que se encostam viram UM detalhe só
+    gs = [list(g) for g in nichos(w) + abertos(w)]
+    toca = lambda A, B: all(min(A[k + 3], B[k + 3]) - max(A[k], B[k]) > -5 for k in range(3))
+    mudou = True
+    while mudou:
+        mudou = False
+        for i0 in range(len(gs)):
+            for j0 in range(i0 + 1, len(gs)):
+                if any(toca(a['bb'], b['bb']) for a in gs[i0] for b in gs[j0]):
+                    gs[i0] += gs.pop(j0); mudou = True; break
+            if mudou: break
+    return gs
+
+def abertos(w):
+    # REGRA (João): NICHO = estrutura ABERTA, SEM PORTA (sem porta/basculante/gaveta), com ou sem prateleira.
+    # Módulo sem porta (até 2 m x 1,2 m) + tamponamentos/painéis encostados = DETALHE. Armário com porta NUNCA é nicho.
     f_ = FV[w['key']]; al = 1 if f_[0] else 0; out = []; ja = set()
     for g in nichos(w):
         for i in g: ja.add(id(i))
     for m in w['itens']:
-        if m['tipo'] != 'mod' or m['bb'][2] < 1400 or id(m) in ja: continue
-        a0, a1 = m['bb'][al], m['bb'][al + 3]; iv = []
-        for o in w['itens']:
-            if o is m or o['bb'][5] > m['bb'][2] + 10: continue
-            if o['tipo'] != 'mod' and o['bb'][5] - o['bb'][2] < 300: continue   # rodapé/"Vista"/filete não contam
-            lo, hi = max(a0, o['bb'][al]), min(a1, o['bb'][al + 3])
-            if hi > lo: iv.append((lo, hi))
-        cob = 0; fim = a0
-        for lo, hi in sorted(iv):
-            lo = max(lo, fim)
-            if hi > lo: cob += hi - lo; fim = hi
-        if cob >= 0.3 * (a1 - a0): continue
+        if m['tipo'] != 'mod' or id(m) in ja: continue
+        mb = m['bb']
+        if mb[al + 3] - mb[al] > 2000 or mb[5] - mb[2] > 1200 or tem_porta(m, w): continue
         g = [m] + [o for o in w['itens'] if o['tipo'] == 'comp' and id(o) not in ja
-                   and all(min(o['bb'][k + 3], m['bb'][k + 3]) - max(o['bb'][k], m['bb'][k]) > -5 for k in range(3))
-                   and o['bb'][al] >= a0 - 150 and o['bb'][al + 3] <= a1 + 150 and o['bb'][2] >= m['bb'][2] - 100]
+                   and all(min(o['bb'][k + 3], mb[k + 3]) - max(o['bb'][k], mb[k]) > -5 for k in range(3))
+                   and o['bb'][al] >= mb[al] - 150 and o['bb'][al + 3] <= mb[al + 3] + 150]
         for i in g: ja.add(id(i))
         out.append(g)
     return out
@@ -1318,7 +1336,7 @@ for v in V:
             p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
         # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela; continua desenhado na imagem
         # grande, mas os balões dele ficam SÓ no detalhe (imagem grande menos poluída)
-        nis = [(w, c) for w in s_['paredes'] for c in nichos(PW[w]) + suspensos(PW[w])]
+        nis = [(w, c) for w in s_['paredes'] for c in detalhes(PW[w])]
         # REGRA (João): item listado que fica ESCONDIDO ATRÁS dos módulos (ex.: painel nas costas da ilha)
         # ganha um detalhe visto de trás; balão dele só nesse detalhe.
         cts = [(w, c, 'costas') for w in s_['paredes'] for c in [costas(PW[w])] if c]

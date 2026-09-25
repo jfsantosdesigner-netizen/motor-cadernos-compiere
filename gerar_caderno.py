@@ -12,7 +12,8 @@ AREA = fz.Rect(19, 142, 823, 577); IN = 7
 RED = (0.545, 0, 0); CR = (0.9, 0, 0); PRETO = (0, 0, 0)
 BRANCO = (1, 1, 1); MADEIRA = (0.80, 0.63, 0.42); CINZA = (0.93, 0.93, 0.93)
 MM = 72 / 25.4
-ESC = [15, 20, 25, 30, 40, 50, 75, 100, 125, 150]   # 1:15 e 1:20 só para móvel/parede pequena (ver escala_para)
+ESC = [15, 20, 25, 30, 40, 50, 75, 100, 125, 150]
+ESC_COTA = [10, 12.5, 15, 20, 25, 30, 40, 50, 75, 100]   # v15: elevação de cotas usa a maior escala que cabe   # 1:15 e 1:20 só para móvel/parede pequena (ver escala_para)
 FV = {'x+': (1, 0), 'x-': (-1, 0), 'y+': (0, 1), 'y-': (0, -1)}
 AREA_IN = fz.Rect(AREA.x0 + IN, AREA.y0 + IN, AREA.x1 - IN, AREA.y1 - IN)   # regra: nada encosta no quadro
 
@@ -113,6 +114,14 @@ else:
 _CC = os.path.join(_MD, 'cores_cache.json')
 _cc = json.load(open(_CC, encoding='utf-8')) if os.path.exists(_CC) else {}
 _PREF = ('duratex', 'arauco', 'guararapes', 'berneck', 'eucatex', 'masisa', 'stelben')
+def _parecido(a, b):
+    # REGRA (v15): nome do XML com letra a mais/a menos ou cortado ("Metallic Sued" = "Metalic Suede")
+    if a == b: return True
+    if min(len(a), len(b)) >= 4 and (a.startswith(b) or b.startswith(a)) and abs(len(a) - len(b)) <= 2: return True
+    if abs(len(a) - len(b)) > 1 or min(len(a), len(b)) < 5: return False
+    i = 0
+    while i < min(len(a), len(b)) and a[i] == b[i]: i += 1
+    return a[i + 1:] == b[i + 1:] or a[i + 1:] == b[i:] or a[i:] == b[i + 1:]
 def cor_material(nome):
     if not nome: return None
     if _cc.get(nome): return tuple(_cc[nome][0])   # 'sem textura' antigo não bloqueia nova busca
@@ -123,6 +132,7 @@ def cor_material(nome):
             ws = st.split()
             if st == n: sc = 100
             elif all(t in ws for t in cand): sc = 60 - len(ws)
+            elif len(ws) == len(cand) and all(any(_parecido(t, w_) for w_ in ws) for t in cand): sc = 40 - len(ws)
             else: continue
             pl = path_.lower(); sc += sum(5 for w in _PREF if w in pl) + (2 if '\\fabrica\\' in pl else 0)
             if best is None or sc > best[0]: best = (sc, path_)
@@ -191,7 +201,8 @@ for p_ in P:
 print('CORES: %d pecas coloridas pelo MATERIAIS (medidas no XML: %d)' % (_nc, len(_dm)))
 TEX_FALTA = [m_ for m_ in _usadas if _cc.get(m_) and not os.path.exists(os.path.join(_MD, 'texturas', _cc[m_][1].replace('\\', '/').split('/')[-1].lower()))]
 for nm_, q_ in _usadas.most_common(): print('   %-22s %4d pecas <- %s' % (nm_, q_, os.path.relpath(_cc[nm_][1], _MAT)))
-for nm_ in [k for k, v in _cc.items() if not v]: print('   SEM TEXTURA:', nm_)
+_todas_mats = {r_ for c_ in _dm.values() for r_ in c_}
+for nm_ in [k for k, v in _cc.items() if not v and k in _todas_mats]: print('   SEM TEXTURA:', nm_)
 inst = geo.casar(P, linhas, None if cfg.get('listagem_pdf') else QT)
 paredes = geo.definir_paredes(inst, P)
 # REGRA: mesma parede com módulos de profundidades diferentes (ex.: armário raso 200 mm + balcão 600 mm)
@@ -360,7 +371,7 @@ def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
         for a_, b_ in zip(q, q[1:] + q[:1]):
             if abs(a_[0] - b_[0]) < 0.35 or abs(a_[1] - b_[1]) < 0.35: sh.draw_line(a_, b_)
         sh.finish(color=(0.2, 0.2, 0.2), width=0.3)
-    sh.draw_line((X(G['umin']) - 6, fy), (X(G['umax']) + 6, fy)); sh.finish(color=PRETO, width=0.9)
+    sh.draw_line((X(G.get('vmin', G['umin'])) - 6, fy), (X(G.get('vmax', G['umax'])) + 6, fy)); sh.finish(color=PRETO, width=0.9)
     sh.commit()
     if baloes:
         for b in G['boxes']:
@@ -437,11 +448,15 @@ def cotar(page, G, ox, fy, k):
         cadeia_h(page, us, fy + 13, fy + 2, X)
         if len(_uniq(us)) > 2: cadeia_h(page, [min(us), max(us)], fy + 26, fy + 2, X)
     xr, xl = X(G['umax']), X(G['umin'])
+    vr, vl = X(G.get('vmax', G['umax'])), X(G.get('vmin', G['umin']))   # REGRA (v15): cotas por FORA das paredes
     dir_ = [b for b in mb if b['u1'] >= G['umax'] - 700]
     esq = [b for b in mb if b['u0'] <= G['umin'] + 700]
-    cadeia_v(page, [ZP] + [v for b in dir_ for v in (b['z0'], b['z1'])], xr + 14, xr + 2, Y)
-    cadeia_v(page, [ZP] + [v for b in esq for v in (b['z0'], b['z1'])], xl - 14, xl - 2, Y)
-    cadeia_v(page, [ZP, max(b['z1'] for b in mb)], xl - 28, xl - 2, Y)
+    # móvel longe da parede lateral (> 600 mm): a cadeia fica encostada no móvel, não atravessa a parede vazia
+    if vr - xr > 600 * k: vr = xr
+    if xl - vl > 600 * k: vl = xl
+    cadeia_v(page, [ZP] + [v for b in dir_ for v in (b['z0'], b['z1'])], vr + 14, xr + 2, Y)
+    cadeia_v(page, [ZP] + [v for b in esq for v in (b['z0'], b['z1'])], vl - 14, xl - 2, Y)
+    cadeia_v(page, [ZP, max(b['z1'] for b in mb)], vl - 28, xl - 2, Y)
     # REGRA (João): cotas INTERNAS dentro do móvel, vão por vão.
     #  - horizontal: largura livre entre lateral/divisória/divisória/lateral
     #  - vertical: altura livre entre prateleiras (de uma prateleira à outra, onde entram gavetas etc.)
@@ -527,10 +542,10 @@ def tabela(p, linhas, x0, y0, largura=248):
         p.insert_text(((cols[2] + cols[3]) / 2 - fz.get_text_length(dm, 'helv', fs) / 2, y), dm, fontname='helv', fontsize=fs)
     return y0 + lh * (len(linhas) + 1)
 
-def escala_para(larg_mm, alt_mm, W, H):
-    for S in ESC:
+def escala_para(larg_mm, alt_mm, W, H, cheio=False):
+    for S in (ESC_COTA if cheio else ESC):
         k = MM / S
-        lim = 0.75 if S < 25 else 1.0   # REGRA (João): parede pequena amplia (1:20, 1:15) sem ocupar a folha toda
+        lim = 1.0 if cheio else 0.75 if S < 25 else 1.0   # cotas (v15): ocupa a prancha toda
         if larg_mm * k <= W * lim and alt_mm * k <= H * lim: return S, k
     return ESC[-1], MM / ESC[-1]
 
@@ -551,6 +566,10 @@ def _render3d_old0(page, rect, pids, letra=None, ang=32, elev=20):
     cor = {}
     for i in inst:
         for pi in i['pecas']: cor[pi] = MADEIRA if i['tipo'] == 'comp' else (0.97, 0.97, 0.97)
+    if ctx:   # REGRA (v15): piso de referência (cinza claro) para a imagem não ficar "flutuando" no branco
+        _pz = [0.0] * 6; _pz[axl] = U[axl] - 4000; _pz[axl + 3] = U[axl + 3] + 4000; _pz[2] = -20; _pz[5] = 0
+        _pl = w0['plano']; _pz[axd], _pz[axd + 3] = (_pl - 6000, _pl) if sg > 0 else (_pl, _pl + 6000)
+        src.append((caixa_faces(_pz)[1], (0.86, 0.86, 0.86), [False] * 4, 0, -1))
     L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L)); fcs = []
     for p_ in P:
         b = p_['bb']
@@ -632,7 +651,7 @@ def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
             for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
                 if f_: sh.draw_line(a_, b_)
             sh.finish(color=(0.2, 0.2, 0.2), width=0.3, closePath=False)
-    sh.draw_line((X(G['umin']) - 6, fy), (X(G['umax']) + 6, fy)); sh.finish(color=PRETO, width=0.9)
+    sh.draw_line((X(G.get('vmin', G['umin'])) - 6, fy), (X(G.get('vmax', G['umax'])) + 6, fy)); sh.finish(color=PRETO, width=0.9)
     sh.commit()
 
 def render3d(page, rect, pids, letra=None, ang=15, elev=12, abertas=False):
@@ -693,6 +712,10 @@ def render3d(page, rect, pids, letra=None, ang=15, elev=12, abertas=False):
         if not tr: return v
         px, py, c_, s_ = tr; x, y = v[0] - px, v[1] - py
         return (px + x * c_ - y * s_, py + x * s_ + y * c_, v[2])
+    if ctx:   # REGRA (v15): piso de referência (cinza claro) para a imagem não ficar "flutuando" no branco
+        _pz = [0.0] * 6; _pz[axl] = U[axl] - 4000; _pz[axl + 3] = U[axl + 3] + 4000; _pz[2] = -20; _pz[5] = 0
+        _pl = w0['plano']; _pz[axd], _pz[axd + 3] = (_pl - 6000, _pl) if sg > 0 else (_pl, _pl + 6000)
+        src.append((caixa_faces(_pz)[1], (0.86, 0.86, 0.86), [False] * 4, 0, -1))
     L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L)); fcs = []
     for p_ in dentro:
         base = cor.get(p_['i'], (0.80, 0.80, 0.83)); tr = rot.get(p_['i'])
@@ -748,6 +771,30 @@ def paredes_recorte(R):
         if all(c[k + 3] - c[k] > 1 for k in range(3)): out.append(c)
     return out
 
+def _vista_limites(w, f, umin_, umax_, zmax_):
+    """REGRA (v15): limites da elevação 2D = parede a parede (face interna da parede lateral + espessura) e piso ao teto.
+    Sem parede lateral a até 4 m: abre 300 mm além do móvel. Teto = maior altura das paredes reais (até 3,2 m)."""
+    axd = 0 if f[0] else 1; sg = f[axd]; pl = w['plano']
+    cx = []
+    for p_ in PAREDES_PECAS + PAR_DXF: cx.append(p_['bb'])
+    for p_ in MALHA_PAR:
+        for fc in p_['faces']:
+            cx.append([min(v[0] for v in fc), min(v[1] for v in fc), min(v[2] for v in fc), max(v[0] for v in fc), max(v[1] for v in fc), max(v[2] for v in fc)])
+    esq, dir_, esp_e, esp_d, tetos = None, None, 150, 150, []
+    for b in cx:
+        if b[5] - b[2] < 1500: continue
+        d0, d1 = sorted(((pl - b[axd]) * sg, (pl - b[axd + 3]) * sg))
+        if d1 < -30 or d0 > 800: continue      # só paredes na faixa dos móveis (fundo até 800 mm à frente)
+        u0, z0, u1, z1 = geo.caixa_elev(b, f)
+        if u1 > umin_ + 20 and u0 < umax_ - 20: tetos.append(z1); continue
+        if u0 >= umax_ - 20 and u0 - umax_ <= 4000 and (dir_ is None or u0 < dir_): dir_ = u0; esp_d = min(max(u1 - u0, 60), 250) if u1 - u0 > 1 else 150
+        if u1 <= umin_ + 20 and umin_ - u1 <= 4000 and (esq is None or u1 > esq): esq = u1; esp_e = min(max(u1 - u0, 60), 250) if u1 - u0 > 1 else 150
+        tetos.append(z1)
+    vmin_ = esq - esp_e if esq is not None else umin_ - 300
+    vmax_ = dir_ + esp_d if dir_ is not None else umax_ + 300
+    ztop_ = min(max(tetos), 3200) if tetos else zmax_ + 150
+    return vmin_, vmax_, max(ztop_, zmax_ + 50)
+
 def geom_parede(w):
     f = FV[w['key']]; faces = []; boxes = []
     dep = lambda vs: sum(v[0] * f[0] + v[1] * f[1] for v in vs) / len(vs)
@@ -762,37 +809,47 @@ def geom_parede(w):
         boxes.append(dict(it=it, u0=u0, z0=z0, u1=u1, z1=z1))
     Ub = list(w['itens'][0]['bb'])
     for it in w['itens']: Ub = geo.uniao(Ub, it['bb'])
-    R = [Ub[0] - 100, Ub[1] - 100, 0, Ub[3] + 100, Ub[4] + 100, Ub[5] + 100]
+    R = [Ub[0] - 1700, Ub[1] - 1700, 0, Ub[3] + 1700, Ub[4] + 1700, 3200]
     if f[0] > 0: R[3] += 300
     if f[0] < 0: R[0] -= 300
     if f[1] > 0: R[4] += 300
     if f[1] < 0: R[1] -= 300
+    _pr = []
+    _axd = 0 if f[0] else 1
     for b in paredes_recorte(R):
+        # REGRA (v15): parede toda NA FRENTE do fundo dos móveis não entra (esconderia o móvel na elevação)
+        if min((w['plano'] - b[_axd]) * f[_axd], (w['plano'] - b[_axd + 3]) * f[_axd]) > 100: continue
         for fc in caixa_faces(b):
-            faces.append((dep(fc), [(uu(v[0], v[1], f), v[2]) for v in fc], (0.9, 0.9, 0.9), [True] * 4))
+            _pr.append((dep(fc), [(uu(v[0], v[1], f), v[2]) for v in fc], (0.9, 0.9, 0.9), [True] * 4))
     umin_ = min(b['u0'] for b in boxes); umax_ = max(b['u1'] for b in boxes); zmax_ = max(b['z1'] for b in boxes)
+    vmin_, vmax_, ztop_ = _vista_limites(w, f, umin_, umax_, zmax_)
     Cc = (sum((x['it']['bb'][0] + x['it']['bb'][3]) / 2 for x in boxes) / len(boxes), sum((x['it']['bb'][1] + x['it']['bb'][4]) / 2 for x in boxes) / len(boxes))
     wf = []
+    # REGRA (v15, João): a cota NÃO elimina as paredes. A vista abre até as paredes laterais (com a espessura delas)
+    # e vai do piso até o teto (pé-direito). Tudo recortado nos limites da vista, nunca rente ao móvel.
+    clq = lambda q: [(min(max(u_, vmin_), vmax_), min(max(z_, 0), ztop_)) for u_, z_ in q]
+    for d_, q_, c_, fl_ in _pr:
+        q2 = clq(q_); faces.append((d_, q2, c_, [a_ and b0 == b1 for a_, b0, b1 in zip(fl_, q2, q_)]))
     for p_ in P:   # REGRA: parede atrás dos móveis na elevação 2D (só referência, não é cotada)
         b = p_['bb']
         if p_['i'] in MALHA_I:   # paredes em peça única: só as faces do fundo (até 300 mm atrás do plano da parede)
             for fc, fl in zip(p_['faces'], p_['ft']):
                 if max(abs(((w['plano'] - v[0] if f[0] else w['plano'] - v[1]) * (f[0] or f[1]))) for v in fc) > 300: continue
                 q_ = [(uu(v[0], v[1], f), v[2]) for v in fc]
-                q2 = [(min(max(u_, umin_ - 150), umax_ + 150), min(z_, zmax_ + 100)) for u_, z_ in q_]
+                q2 = clq(q_)
                 wf.append((1e9, q2, (0.9, 0.9, 0.9), [f0 and a0 == b0 for f0, a0, b0 in zip(fl, q2, q_)]))
             continue
         if not (80 <= min(p_['dim'][0], p_['dim'][1]) <= 400 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) >= 300 and p_['i'] not in _usadas): continue
         if ((b[0] + b[3]) / 2 - Cc[0]) * f[0] + ((b[1] + b[4]) / 2 - Cc[1]) * f[1] < -150: continue
         u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
-        if u1_ < umin_ - 400 or u0_ > umax_ + 400: continue
-        u0_ = max(u0_, umin_ - 150); u1_ = min(u1_, umax_ + 150); z1_ = min(z1_, zmax_ + 100)
+        if u1_ < vmin_ or u0_ > vmax_: continue
+        u0_ = max(u0_, vmin_); u1_ = min(u1_, vmax_); z1_ = min(z1_, ztop_)
         if u1_ - u0_ < 5: continue
         wf.append((1e9, [(u0_, 0), (u1_, 0), (u1_, z1_), (u0_, z1_)], (0.9, 0.9, 0.9), [True] * 4))
     # AMBIENTE no 2D (só referência, NUNCA cotado): pedra e móveis das paredes vizinhas perto desta parede.
     axd = 0 if f[0] else 1; sg = f[axd]
     prof_ = lambda bb: min((w['plano'] - bb[axd]) * sg, (w['plano'] - bb[axd + 3]) * sg)
-    cl = lambda u: min(max(u, umin_ - 300), umax_ + 300)
+    cl = lambda u: min(max(u, vmin_), vmax_)
     for p_ in AMB + ELETROS:   # pedra/eletros só aparecem na parede onde estão
         b = p_['bb']; u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
         if prof_(b) > 1000 or u1_ < umin_ - 50 or u0_ > umax_ + 50: continue
@@ -806,11 +863,11 @@ def geom_parede(w):
             p_ = P[pi]; b = p_['bb']; sd_ = sorted(p_['dim'])
             if sd_[1] < 50 or sd_[0] > 60 or prof_(b) > 1000: continue
             u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
-            if u1_ <= umin_ - 300 or u0_ >= umax_ + 300: continue
+            if u1_ <= vmin_ or u0_ >= vmax_: continue
             for uq, nv, ft in p_['fq']:
                 faces.append((dep(uq), [(cl(uu(v[0], v[1], f)), v[2]) for v in uq], (0.86, 0.86, 0.86), ft))
     faces.sort(key=lambda t: -t[0]); faces = wf + faces
-    return dict(w=w, f=f, faces=faces, boxes=boxes, umin=min(b['u0'] for b in boxes), umax=max(b['u1'] for b in boxes), zmax=max(b['z1'] for b in boxes))
+    return dict(w=w, f=f, faces=faces, boxes=boxes, umin=umin_, umax=umax_, zmax=zmax_, vmin=vmin_, vmax=vmax_, ztop=ztop_)
 
 def _ordem_pecas(fcs, bbs, cam):
     # Ordem de desenho POR PEÇA (pintor): A antes de B quando B está na frente de A.
@@ -1074,6 +1131,10 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         if ctx: R[axl] -= 1800; R[axl + 3] += 1800
         for b in paredes_recorte(R):
             for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
+    if ctx:   # REGRA (v15): piso de referência (cinza claro) para a imagem não ficar "flutuando" no branco
+        _pz = [0.0] * 6; _pz[axl] = U[axl] - 4000; _pz[axl + 3] = U[axl + 3] + 4000; _pz[2] = -20; _pz[5] = 0
+        _pl = w0['plano']; _pz[axd], _pz[axd + 3] = (_pl - 6000, _pl) if sg > 0 else (_pl, _pl + 6000)
+        src.append((caixa_faces(_pz)[1], (0.86, 0.86, 0.86), [False] * 4, 0, -1))
     L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L))
     def pj(v):
         rel = (v[0] - cam[0], v[1] - cam[1], v[2] - cam[2]); z = dot(rel, fw)
@@ -1092,13 +1153,16 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         cc = [pj((b_[i0], b_[1 + j0], b_[2 + k0])) for pc_, b_ in _bi.items() if _pidx.get(pc_) in _alvo for i0 in (0, 3) for j0 in (0, 3) for k0 in (0, 3)]
         cc = [c_ for c_ in cc if c_[2] > 50]
         if cc: xs = [c_[0] for c_ in cc]; ys = [c_[1] for c_ in cc]
-    if ctx:   # enquadra a parede da vista (+ um pouco do ambiente) e recorta o resto
-        Uq = list(U); Uq[axl] -= 700; Uq[axl + 3] += 700; Uq[2] = 0; Uq[5] += 150
+    if ctx:   # REGRA (v15, João): a imagem PREENCHE o quadro todo. Enquadra os móveis com folga curta
+        # (300 mm dos lados, piso até 150 mm acima do móvel); o ambiente (paredes, piso) completa o resto e é recortado.
+        Uq = list(U); Uq[axl] -= 300; Uq[axl + 3] += 300; Uq[2] = 0; Uq[5] += 150
+        # móvel pequeno: enquadramento mínimo 2,2 m x 2,0 m (mostra o ambiente, não vira close do móvel)
+        _fx = max(0, 2200 - (Uq[axl + 3] - Uq[axl])) / 2; Uq[axl] -= _fx; Uq[axl + 3] += _fx; Uq[5] = max(Uq[5], 2000)
         cc = [pj((Uq[i0], Uq[1 + j0], Uq[2 + k0])) for i0 in (0, 3) for j0 in (0, 3) for k0 in (0, 3)]
         cc = [c_ for c_ in cc if c_[2] > 50]
         xs = [c_[0] for c_ in cc]; ys = [c_[1] for c_ in cc]
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-    mgf = 22 if itens else 16
+    mgf = 22 if itens else 4 if ctx else 16
     k = min((rect.width - mgf) / (x1 - x0), (rect.height - mgf) / (y1 - y0))
     ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
     T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
@@ -1377,19 +1441,20 @@ for v in V:
                 render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=c, ang=(-1 if lado > 0 else 1) * (28 if max(i['bb'][ax_ + 3] for i in c) - min(i['bb'][ax_] for i in c) < 1000 else 14), dmin=2200, margem=60)
     # cotas
     n += 1; p = nova_prancha(doc, n, f"MEDIDAS E ALTURAS - {v['titulo']}")
-    nc = len(GS); zm = max(G['zmax'] for G in GS)
-    Wm = [G['umax'] - G['umin'] for G in GS]
-    # colunas proporcionais ao tamanho de cada parede (mesma escala para as duas)
-    S, k = escala_para(sum(Wm), zm, AREA_IN.width - 95 * nc, AREA_IN.height - 105)
-    sobra = (AREA_IN.width - sum(w_ * k + 95 for w_ in Wm)) / nc
-    cws = [w_ * k + 95 + sobra for w_ in Wm]
-    fy = AREA_IN.y0 + 42 + zm * k
+    nc = len(GS); zm = max(G['ztop'] for G in GS)
+    Wm = [G['vmax'] - G['vmin'] for G in GS]
+    # REGRA (v15, João): a elevação PREENCHE a prancha (parede a parede, piso ao teto), mesma escala nas colunas;
+    # móvel pequeno não fica pequeno: escala sobe até 1:10. Colunas proporcionais ao tamanho de cada parede.
+    S, k = escala_para(sum(Wm), zm, AREA_IN.width - 80 * nc, AREA_IN.height - 62, cheio=True)
+    sobra = (AREA_IN.width - sum(w_ * k + 80 for w_ in Wm)) / nc
+    cws = [w_ * k + 80 + sobra for w_ in Wm]
+    fy = AREA_IN.y0 + (AREA_IN.height - 62 - zm * k) / 2 + 22 + zm * k
     for j, G in enumerate(GS):
         cw = cws[j]; cx0 = AREA_IN.x0 + sum(cws[:j])
-        ox = cx0 + (cw - (G['umax'] - G['umin']) * k) / 2
+        ox = cx0 + (cw - Wm[j] * k) / 2 + (G['umin'] - G['vmin']) * k
         desenhar(p, G, ox, fy, k)
         cotar(p, G, ox, fy, k)
-        lab = f"VISTA {v['letras'][j]} - ESC. 1:{S}"
+        lab = f"VISTA {v['letras'][j]} - ESC. 1:{S:g}"
         p.insert_text((cx0 + cw / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
         if j: p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
 
@@ -1427,7 +1492,7 @@ q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (g
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
 for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {VW[0]['letra']})")
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))
-TEX_FALTA = [m_ for m_ in TEX_FALTA if not textura(m_)]
+TEX_FALTA = [m_ for m_ in TEX_FALTA if not textura(m_)] + [m_ for m_, v_ in _cc.items() if not v_ and m_ in _todas_mats]
 q.append(f"- {'APROVADO' if not TEX_FALTA else 'INCERTO'} | texturas dos materiais" + ('' if not TEX_FALTA else ' — faltando (sai cor lisa): ' + ', '.join(TEX_FALTA)))
 for v in VW: q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem")
 q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in VW for i, (d, dm, m_) in enumerate(v['linhas'], 1)]

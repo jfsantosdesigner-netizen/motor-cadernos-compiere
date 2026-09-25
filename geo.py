@@ -230,11 +230,25 @@ def definir_paredes(inst, P):
         if m and dist_caixas(it['bb'], m['bb']) <= 400:
             it['parede_key'] = m['parede_key']; it['_forca'] = m['parede']
         else:
-            it['parede_key'] = parede_de(it, lim, P)
-    paredes = _montar([i for i in inst if not i.get('_forca')])
+            it['parede_key'] = parede_de(it, lim, P); it['_solto'] = True
+    # REGRA (v15): peça solta (tamponamento/painel) que não encosta em parede nem em módulo, mas ENCOSTA (até 60 mm)
+    # em outra peça do projeto, vai para a parede dessa peça (ex.: tamponamento de apoio na ponta do painel).
+    # Nunca forma uma parede (vista) sozinha.
+    for it in inst:
+        if not it.get('_solto'): continue
+        viz = [o for o in inst if o is not it and not o.get('_solto')]
+        o = min(viz, key=lambda o: dist_caixas(it['bb'], o['bb'])) if viz else None
+        if o is not None and dist_caixas(it['bb'], o['bb']) <= 60:
+            it['parede_key'] = o['parede_key']; it['_junto'] = o
+    paredes = _montar([i for i in inst if not i.get('_forca') and not i.get('_junto')])
     for it in inst:
         if it.get('_forca'):
             w = next(w for w in paredes if w['id'] == it['_forca']); w['itens'].append(it); it['parede'] = w['id']
+    for it in inst:
+        if it.get('_junto'):
+            alvo = it['_junto']
+            while alvo.get('_junto'): alvo = alvo['_junto']
+            w = next(w for w in paredes if w['id'] == alvo['parede']); w['itens'].append(it); it['parede'] = w['id']
     return paredes
 
 def agrupar_vistas2(paredes, raio=650):

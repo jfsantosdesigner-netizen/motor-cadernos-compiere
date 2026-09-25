@@ -1,7 +1,19 @@
-MOTOR DE CADERNOS COMPIERE - v14 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v15 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v15 (25/09/2026) - nuvem, aguardando aprovação do João (5 projetos regerados, com Suíte Casal)
+ - COTAS: elevação abre parede a parede (face interna da parede lateral + espessura, até 4 m do móvel; sem parede = 300 mm)
+   e do piso ao teto (pé-direito das paredes do DXF). Paredes NUNCA são eliminadas da cota.
+ - COTAS: desenho preenche a prancha; escala sobe até 1:10 (móvel pequeno não fica pequeno). Cadeias de altura por fora
+   das paredes; se o móvel está a mais de 600 mm da parede lateral, a cadeia fica encostada no móvel
+ - COTAS: parede que fica toda NA FRENTE do fundo dos móveis não entra (não cobre o móvel)
+ - 3D (listagem e visão geral): imagem PREENCHE o quadro (sem margem branca); móveis com folga de 300 mm, ambiente
+   completa o resto; piso cinza de referência; móvel pequeno com enquadramento mínimo 2,2 x 2,0 m
+ - peça solta (tamponamento/painel) que encosta (até 60 mm) em outra peça vai para a parede dela; nunca vira vista sozinha
+ - cores: nome do XML com letra a mais/a menos ou cortado casa com a tabela ("Metallic Sued" = "Metalic Suede")
+ - relatório: material sem cor/textura = INCERTO (antes saía APROVADO); textura nova: Metalic Suede
 
 v14 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC (4 projetos regerados)
  - NICHO = estrutura ABERTA, SEM PORTA (porta/basculante/gaveta), com ou sem prateleira. Armário com porta NUNCA é nicho

@@ -1,0 +1,536 @@
+diff --git a/VERSAO.txt b/VERSAO.txt
+index 5b690c2..f372b8b 100644
+--- a/VERSAO.txt
++++ b/VERSAO.txt
+@@ -1,8 +1,25 @@
+-MOTOR DE CADERNOS COMPIERE - v25 (25/09/2026)
++MOTOR DE CADERNOS COMPIERE - v26 (25/09/2026)
+ 
+ REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
+ No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+ 
++v26 (25/09/2026) - nuvem, aguardando teste do João (9 projetos regerados; os 8 antigos iguais à v25)
++ Projeto novo: PRISCILA COZINHA (exemplos/PRISCILA_COZINHA), comparado com o caderno feito à mão (só ideias)
++ - CONDIÇÃO "PAREDE CORTADA POR PILAR / VÃO": móveis da mesma parede dos dois lados de uma parede real que atravessa a
++   faixa dos móveis (pilar, verga de vão de passagem) = duas vistas (cada lado com listagem e cotas próprias)
++ - CONDIÇÃO "CONJUNTO DE PAINÉIS SEM MÓDULO": paredes só com painéis que se encostam (painel com nichos na ponta da parede,
++   painel do teto, agastadores) = BLOCO PRÓPRIO no fim ("PAINEL COM NICHOS"): 3D frontal + 3D lateral reta (móvel sozinho),
++   cota frontal (vãos usinados, alturas do piso) + lateral (profundidade do painel do teto)
++ - CONDIÇÃO "PAINEL USINADO": painel em pé na frente de estrutura de nichos aberta = painel com os vãos alinhados aos nichos
++ - DIVISOR DE GAVETA: vale também para divisor de TALHER de cozinha (peças até 750 mm, conjunto até 800 x 800, peças deitadas)
++ - MÓDULO BAIXO / GIRADO (adega 150 x 870 x 600): laterais de 100-150 mm e módulo girado no Promob agora são achados
++ - Porta avulsa do XML (ID POR_...) = porta: não entra na listagem (como as outras portas)
++ - Peça do DXF duplicada no lugar de uma peça listada (fora do XML) não é desenhada
++ - Detalhe de NICHO não leva painel alto (tamponamento até o teto) encostado
++ - Barrote/Cunha NÃO faz parte (João): lista só material (Cunha sai da listagem)
++ - LISTAGEM POLUÍDA (mais de 15 linhas) = DUAS pranchas: SUPERIORES e INFERIORES (ou PARTE 1 / PARTE 2), balões e tabela só de cada parte
++ - COTA É SÓ A VISTA FRONTAL (João): a prancha de cotas não tem mais a vista lateral
++
+ v25 (25/09/2026) - PC: C:\CLAUDE\motor v25 (v24 fica de reserva)
+  - DIVISÓRIA RIPADA, prancha da LATERAL: a tabela e os balões trazem SÓ as peças que APARECEM nessa imagem
+    (buffer de visibilidade: peça com 15%+ da área à vista), com numeração própria da prancha
+diff --git a/ferramentas/visualizador.py b/ferramentas/visualizador.py
+index daa53a6..0905eb3 100644
+--- a/ferramentas/visualizador.py
++++ b/ferramentas/visualizador.py
+@@ -8,7 +8,7 @@ for k, (nome, pdf) in enumerate(cads):
+     tabs.append(f'<button class="tab" data-alvo="{cid}" aria-selected="{str(k == 0).lower()}">{html.escape(nome)}<span>{len(d)} pranchas</span></button>')
+     figs = []
+     for i, p in enumerate(d):
+-        b = base64.b64encode(p.get_pixmap(dpi=115).tobytes('jpeg', jpg_quality=82)).decode()
++        b = base64.b64encode(p.get_pixmap(dpi=115).tobytes('jpeg', jpg_quality=78)).decode()
+         figs.append(f'<figure id="{cid}-{i + 1}"><figcaption>Prancha {i + 1:02d}</figcaption><img loading="lazy" alt="{html.escape(nome)} prancha {i + 1}" src="data:image/jpeg;base64,{b}"></figure>')
+     nav = ''.join(f'<a href="#{cid}-{i + 1}">{i + 1:02d}</a>' for i in range(len(d)))
+     secs.append(f'<section id="{cid}" {"" if k == 0 else "hidden"}><nav class="pags" aria-label="Pranchas">{nav}</nav>{"".join(figs)}</section>')
+@@ -33,7 +33,7 @@ figcaption {{ font-size:12px; color:var(--sutil); text-transform:uppercase; lett
+ figure img {{ width:100%; height:auto; background:#fff; border:1px solid var(--linha); border-radius:3px; }}
+ </style>
+ <div class="wrap">
+-<h1>Cadernos <b>Compiere</b> · motor v25</h1>
++<h1>Cadernos <b>Compiere</b> · motor v26</h1>
+ <div class="tabs" role="tablist">{"".join(tabs)}</div>
+ {"".join(secs)}
+ </div>
+diff --git a/geo.py b/geo.py
+index 241342e..02b647a 100644
+--- a/geo.py
++++ b/geo.py
+@@ -25,18 +25,19 @@ def uniao(a, b):
+ def dentro(b, U, tol=2.5):
+     return all(b[k] >= U[k] - tol for k in range(3)) and all(b[k + 3] <= U[k + 3] + tol for k in range(3))
+ 
+-def laterais(P):
++def laterais(P, zmin=150):
+     out = []
+     for p in P:
+         dx, dy, dz = p['dim']
+-        if min(dx, dy) <= 26 and dz >= 150 and max(dx, dy) >= 150:
++        if min(dx, dy) <= 26 and dz >= zmin and max(dx, dy) >= 150:
+             p['eixo'] = 'x' if dx <= dy else 'y'
+             out.append(p)
+     return out
+ 
+ def casar(P, linhas, qtd=None):
+     """linhas: [(desc, 'LxAxP')]. Retorna instâncias: dict(n, desc, dim, bb, tipo, pecas)."""
+-    L = laterais(P)
++    # REGRA (v26): módulo BAIXO (adega/nicho de 150 mm) tem laterais de 100-150 mm -> entram só para módulo até 200 mm
++    L = laterais(P, 100)
+     usados = set(); inst = []
+     # 1) componentes: peça única
+     for n, (desc, dm) in enumerate(linhas, 1):
+@@ -53,9 +54,29 @@ def casar(P, linhas, qtd=None):
+     for n, (desc, dm) in enumerate(linhas, 1):
+         if eh_componente(desc): continue
+         w, h, d = parse_dim(dm)
++        orients = [(w, h, 0)]
++        # REGRA (v26): módulo GIRADO no Promob (adega deitada: XML 150 x 870 x 600 = 870 de largura, 150 de altura)
++        if h > 2 * w and w <= 300: orients.append((h, w, 5))
++        for w, h, pen in orients: cands += _cands_mod(L, n, desc, dm, w, h, d, pen)
++    cands.sort(key=lambda c: c[0])
++    ocupado = []
++    for e, n, desc, dm, ia, ib, U, wr in cands:
++        if ia in usados or ib in usados: continue
++        if any(_sobrepoe(U, O) for O in ocupado): continue
++        usados.update((ia, ib)); ocupado.append(U)
++        inst.append(dict(n=n, desc=desc, dim=dm, bb=U, tipo='mod', pecas=[ia, ib], larg=wr))
++    # peças internas de cada módulo (para o desenho), portas ficam fora porque estão à frente das laterais
++    for it in inst:
++        if it['tipo'] == 'mod':
++            it['pecas'] = [p['i'] for p in P if dentro(p['bb'], it['bb'])]
++    return inst
++
++def _cands_mod(L, n, desc, dm, w, h, d, pen=0):
++        cands = []
+         tw, td = (45, 110) if 'canto' in desc.lower() else (TOL, 70)
+         tz0 = 160 if 'rodap' in desc.lower() else TOL
+         for a, b in itertools.combinations(L, 2):
++            if h > 200 and min(a['dim'][2], b['dim'][2]) < 150: continue
+             if abs(a['bb'][2] - b['bb'][2]) > tz0 or abs(a['bb'][5] - b['bb'][5]) > TOL: continue
+             U = uniao(a['bb'], b['bb'])
+             ux, uy, uz = U[3] - U[0], U[4] - U[1], U[5] - U[2]
+@@ -72,19 +93,8 @@ def casar(P, linhas, qtd=None):
+                 ia = (a['bb'][1], a['bb'][4]) if a['eixo'] == 'x' else (a['bb'][0], a['bb'][3])
+                 ib = (b['bb'][1], b['bb'][4]) if b['eixo'] == 'x' else (b['bb'][0], b['bb'][3])
+                 if abs(ia[0] - ib[0]) > 30 or abs(ia[1] - ib[1]) > 30: continue
+-            cands.append((best, n, desc, dm, a['i'], b['i'], U))
+-    cands.sort(key=lambda c: c[0])
+-    ocupado = []
+-    for e, n, desc, dm, ia, ib, U in cands:
+-        if ia in usados or ib in usados: continue
+-        if any(_sobrepoe(U, O) for O in ocupado): continue
+-        usados.update((ia, ib)); ocupado.append(U)
+-        inst.append(dict(n=n, desc=desc, dim=dm, bb=U, tipo='mod', pecas=[ia, ib]))
+-    # peças internas de cada módulo (para o desenho), portas ficam fora porque estão à frente das laterais
+-    for it in inst:
+-        if it['tipo'] == 'mod':
+-            it['pecas'] = [p['i'] for p in P if dentro(p['bb'], it['bb'])]
+-    return inst
++            cands.append((best + pen, n, desc, dm, a['i'], b['i'], U, w))
++        return cands
+ 
+ def _sobrepoe(A, B, folga=5):
+     return all(min(A[k + 3], B[k + 3]) - max(A[k], B[k]) > folga for k in range(3))
+@@ -105,7 +115,7 @@ def parede_de(it, lim, P):
+         a = P[it['pecas'][0]].get('eixo') if False else None
+     # eixo ao longo da parede = maior extensão horizontal (módulo: largura; painel: comprimento)
+     if it['tipo'] == 'mod':
+-        w = parse_dim(it['dim'])[0]
++        w = it.get('larg') or parse_dim(it['dim'])[0]
+         ao_longo = 'x' if abs(dx - w) <= abs(dy - w) else 'y'
+     else:
+         ao_longo = 'x' if dx >= dy else 'y'
+@@ -178,7 +188,7 @@ def dist_caixas(A, B):
+ def _ao_longo(it):
+     b = it['bb']; dx, dy = b[3] - b[0], b[4] - b[1]
+     if it['tipo'] == 'mod':
+-        w = parse_dim(it['dim'])[0]
++        w = it.get('larg') or parse_dim(it['dim'])[0]
+         return 'x' if abs(dx - w) <= abs(dy - w) else 'y'
+     return 'x' if dx >= dy else 'y'
+ 
+diff --git a/gerar_caderno.py b/gerar_caderno.py
+index 32edb6b..52cd9bf 100644
+--- a/gerar_caderno.py
++++ b/gerar_caderno.py
+@@ -45,8 +45,9 @@ def ler_xml(path):
+                     if re.search(r'lat|bas', ch.get('ID', ''), re.I) and modelo(ch): m = modelo(ch); break
+             if 'EURONOBRE' in cn or 'PUX' in U: pux[d.split('(')[0].strip()] = 1; continue
+             if 'FERRAG' in cn: ferr[d.strip()] = 1; continue
++            if re.match(r'\s*cunha', d, re.I): continue   # REGRA (v26, João): barrote/cunha não faz parte, lista só material
+             if 'ACESS' in cn or U.startswith('ACE') or U.startswith('EUR_'): continue
+-            if '_POR_' in U:
++            if '_POR_' in U or U.startswith('POR_'):   # REGRA (v26): porta avulsa do XML (POR_INF_CUR) = porta, não entra na listagem
+                 if m: cores.setdefault('porta', OrderedDict())[m] = 1
+                 continue
+             desc = re.sub(r'\s+\d+(?:[.,]\d+)?x\d+(?:[.,]\d+)?x\d+(?:[.,]\d+)?mm\s*$', '', d).strip()
+@@ -235,6 +236,14 @@ paredes = _juntar_paredes(paredes)
+ # Hoje: PEDRA / bancada / rodabanca = placa horizontal (15–100 mm) na altura da bancada (700–1100 mm).
+ # Desenhada com as faces reais do DXF (pedra em L sai em L).
+ _usadas = {pi for i in inst for pi in i['pecas']}
++# REGRA (v26): peça do DXF que NÃO está na listagem e ocupa o MESMO lugar de uma peça listada (cópia do painel,
++# ex.: painel usinado 1580 sobre o painel 1530 da lista) = duplicada -> não é desenhada (cobria o painel de cinza).
++def _vol(b): return max(0, b[3] - b[0]) * max(0, b[4] - b[1]) * max(0, b[5] - b[2])
++def _vol_int(A, B): return _vol([max(A[0], B[0]), max(A[1], B[1]), max(A[2], B[2]), min(A[3], B[3]), min(A[4], B[4]), min(A[5], B[5])]) if all(min(A[k + 3], B[k + 3]) > max(A[k], B[k]) for k in range(3)) else 0
++_bb_list = [P[pi]['bb'] for pi in _usadas]
++DUP_I = {p_['i'] for p_ in P if p_['i'] not in _usadas and _vol(p_['bb']) > 0 and sorted(p_['dim'])[1] >= 50
++         and any(_vol_int(p_["bb"], b_) >= 0.8 * max(_vol(p_["bb"]), _vol(b_)) for b_ in _bb_list)}
++if DUP_I: print('PEÇAS DUPLICADAS NO DXF (não desenhadas):', len(DUP_I))
+ PEDRA_COR = (0.16, 0.16, 0.17)
+ AMB = [p_ for p_ in P if p_['i'] not in _usadas and p_['faces'] and 15 <= p_['dim'][2] <= 100
+        and max(p_['dim'][0], p_['dim'][1]) >= 500 and min(p_['dim'][0], p_['dim'][1]) >= 250 and 700 <= p_['bb'][2] <= 1100]
+@@ -329,7 +338,9 @@ for axd in (0, 1):   # axd = eixo da profundidade (as ripas têm a largura de 15
+ # 2) DIVISOR DE GAVETA (joias/talheres): 4+ peças finas (<= 18) e baixas (<= 100) de até 450 mm, nos dois sentidos,
+ #    encostadas, acima do piso. Sai da listagem da parede e ganha uma PRANCHA PRÓPRIA (vista de cima com cotas).
+ DIVISORES = []
+-_dv = [i for i in _comps if not i.get('_div') and i['bb'][2] > 150 and (lambda d: d[0] <= 18 and d[1] <= 100 and d[2] <= 450)(_sd(i))]
++# REGRA (v26, cozinha Priscila): divisor de TALHER de gaveta de cozinha tem peças até 750 mm (conjunto até 800 x 800);
++#    as peças ficam DEITADAS (altura <= 100 mm de verdade no DXF) -> fechamento/tamponamento em pé não entra.
++_dv = [i for i in _comps if not i.get('_div') and i['bb'][2] > 150 and i['bb'][5] - i['bb'][2] <= 100 and (lambda d: d[0] <= 18 and d[1] <= 100 and d[2] <= 750)(_sd(i))]
+ _vis = set()
+ for i in _dv:
+     if id(i) in _vis: continue
+@@ -340,7 +351,7 @@ for i in _dv:
+         k_ += 1
+     ori = {0 if (o['bb'][3] - o['bb'][0]) > (o['bb'][4] - o['bb'][1]) else 1 for o in g_}
+     U_ = [min(o['bb'][0] for o in g_), min(o['bb'][1] for o in g_), max(o['bb'][3] for o in g_), max(o['bb'][4] for o in g_)]
+-    if len(g_) >= 4 and len(ori) == 2 and U_[2] - U_[0] <= 500 and U_[3] - U_[1] <= 500:
++    if len(g_) >= 4 and len(ori) == 2 and U_[2] - U_[0] <= 800 and U_[3] - U_[1] <= 800:
+         DIVISORES.append(g_)
+ # 3) GAVETA / MÓDULO MONTADO COM PAINÉIS (não é módulo do Promob): peça horizontal (fundo, >= 0,1 m²) acima de 300 mm
+ #    + peças do MESMO material encostadas, até 140 mm acima do fundo, 3+ em pé. Sai da parede -> prancha própria.
+@@ -401,7 +412,109 @@ for w in [w for w in paredes if not w.get('divisoria')]:
+     for i in perna: i['parede'] = nw['id']
+     _novas.append(nw)
+ paredes += _novas
++# 5) CONDIÇÃO (v26, cozinha Priscila): PAREDE CORTADA POR PILAR / VÃO DE PASSAGEM. Os móveis de uma mesma parede ficam
++#    dos dois lados de uma parede real que atravessa a faixa dos móveis (pilar, verga de vão de passagem) -> são DOIS
++#    ambientes: cada lado vira uma parede (vista) própria, com listagem e cotas só dele (escala maior, leitura por lado).
++def _faces_parede():
++    for p_ in PAR_DXF + MALHA_PAR:
++        for fc in p_['faces']: yield fc
++_cortadas = []
++for w in [w for w in paredes if not w.get('divisoria') and not w.get('perna_l')]:
++    f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]; pl = w['plano']
++    mods_ = [i for i in w['itens'] if i['tipo'] == 'mod']
++    if len(mods_) < 2: continue
++    D_ = max(max((pl - m['bb'][ad]) * sg_, (pl - m['bb'][ad + 3]) * sg_) for m in mods_)
++    a0, a1 = min(m['bb'][al] for m in mods_), max(m['bb'][al + 3] for m in mods_)
++    cs = []
++    for fc in _faces_parede():
++        vs = [v[al] for v in fc]
++        if max(vs) - min(vs) > 1: continue
++        c = vs[0]
++        if not a0 + 300 < c < a1 - 300: continue
++        d0, d1 = sorted(((pl - min(v[ad] for v in fc)) * sg_, (pl - max(v[ad] for v in fc)) * sg_))
++        if min(d1, D_) - max(d0, 0) >= 0.8 * D_: cs.append(c)
++    cs.sort(); grp = []
++    for c in cs:
++        if grp and c - grp[-1][-1] <= 400: grp[-1].append(c)
++        else: grp.append([c])
++    partes = [w['itens']]
++    for g in grp:
++        c = (g[0] + g[-1]) / 2; nv = []
++        for its_ in partes:
++            e_ = [i for i in its_ if (i['bb'][al] + i['bb'][al + 3]) / 2 < c]; d_ = [i for i in its_ if i not in e_]
++            le = sum(i['bb'][al + 3] - i['bb'][al] for i in e_ if i['tipo'] == 'mod'); ld = sum(i['bb'][al + 3] - i['bb'][al] for i in d_ if i['tipo'] == 'mod')
++            nv += [e_, d_] if le >= 1000 and ld >= 1000 else [its_]
++        partes = nv
++    if len(partes) > 1: _cortadas.append((w, partes))
++for w, partes in _cortadas:
++    paredes.remove(w)
++    for k_, its_ in enumerate(partes):
++        nw = dict(key=w['key'], plano=w['plano'], itens=its_, id=f"{w['id']}{'abcdef'[k_]}", cortada=True)
++        for i in its_: i['parede'] = nw['id']
++        paredes.append(nw)
++# 6) CONDIÇÃO (v26, cozinha Priscila): CONJUNTO DE PAINÉIS SEM MÓDULO (painel com nichos na ponta da parede, painel
++#    no teto, barrotes/cunhas, agastadores). Paredes só com painéis que se ENCOSTAM formam UM BLOCO PRÓPRIO no fim
++#    (como a divisória): listagem com o móvel sozinho (3D frontal + 3D lateral reta) e cotas frontal + lateral.
++_so = [w for w in paredes if not w.get('divisoria') and not any(i['tipo'] == 'mod' for i in w['itens'])]
++_blocos = []
++for w in _so:
++    junto = [b for b in _blocos if any(_toca(i, j, 10) for o in b for i in o['itens'] for j in w['itens'])]
++    novo_ = [w] + [o for b in junto for o in b]
++    _blocos = [b for b in _blocos if b not in junto] + [novo_]
++BLOCOS = []
++for b in _blocos:
++    its_ = [i for o in b for i in o['itens']]
++    if len(b) < 2 or len(its_) < 4: continue
++    # frente = parede do MAIOR painel em pé (visto de frente); plano = face da parede real logo atrás (até 150 mm)
++    def _af(o):
++        f_ = FV[o['key']]; ad = 0 if f_[0] else 1; al = 1 - ad
++        return max([(i['bb'][al + 3] - i['bb'][al]) * (i['bb'][5] - i['bb'][2]) for i in o['itens'] if i['bb'][ad + 3] - i['bb'][ad] <= 30] or [0])
++    fr_ = max(b, key=_af); f_ = FV[fr_['key']]; ad = 0 if f_[0] else 1; sg_ = f_[ad]; pl = fr_['plano']
++    for fc in _faces_parede():
++        vs = [v[ad] for v in fc]
++        if max(vs) - min(vs) <= 1 and 0 < (vs[0] - pl) * sg_ <= 150: pl_ = vs[0]; break
++    else: pl_ = pl
++    for o in b: paredes.remove(o)
++    nicho_ = any(re.match(r'tampon', i['desc'], re.I) for i in its_) and any(_sd(i)[0] <= 8 for i in its_)
++    nw = dict(key=fr_['key'], plano=pl_, itens=its_, id=f"BLOCO@{round(pl_)}", divisoria=True, bloco='PAINEL COM NICHOS' if nicho_ else 'CONJUNTO DE PAINÉIS')
++    for i in its_: i['parede'] = nw['id']
++    paredes.append(nw); BLOCOS.append(nw)
+ PW = {w['id']: w for w in paredes}
++# 7) CONDIÇÃO (v26): PAINEL USINADO. Painel em pé na FRENTE de uma estrutura de nichos aberta (2 laterais + 3 ou mais
++#    prateleiras logo atrás, até 150 mm) = painel com VÃOS usinados alinhados aos nichos (o DXF traz o painel inteiro).
++#    Vão = largura livre entre as laterais x altura livre entre prateleiras (> 150 mm). O painel é desenhado com os vãos.
++def _caixa_fq(b):
++    x0, y0, z0, x1, y1, z1 = b
++    c = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
++    F = [(0, 1, 2, 3), (4, 5, 6, 7), (0, 1, 5, 4), (3, 2, 6, 7), (0, 3, 7, 4), (1, 2, 6, 5)]
++    N = [(0, 0, -1), (0, 0, 1), (0, -1, 0), (0, 1, 0), (-1, 0, 0), (1, 0, 0)]
++    return [[[c[i] for i in f_], n_, [True] * 4] for f_, n_ in zip(F, N)]
++USINADOS = {}
++for w in paredes:
++    f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
++    cps = [i for i in w['itens'] if i['tipo'] == 'comp']
++    for pn in cps:
++        b = pn['bb']
++        if b[ad + 3] - b[ad] > 25 or b[al + 3] - b[al] < 400 or b[5] - b[2] < 800: continue
++        tras = b[ad + 3] if sg_ > 0 else b[ad]
++        atr = [i for i in cps if i is not pn and i['bb'][al] >= b[al] - 5 and i['bb'][al + 3] <= b[al + 3] + 5 and i['bb'][2] >= b[2] - 5
++               and i['bb'][5] <= b[5] + 5 and 0 <= ((i['bb'][ad] - tras) if sg_ > 0 else (tras - i['bb'][ad + 3])) <= 150]
++        prs = sorted([i for i in atr if i['bb'][5] - i['bb'][2] <= 30 and i['bb'][al + 3] - i['bb'][al] >= 150], key=lambda i: i['bb'][2])
++        lts = sorted([i for i in atr if i['bb'][al + 3] - i['bb'][al] <= 30 and i['bb'][5] - i['bb'][2] >= 300], key=lambda i: i['bb'][al])
++        if len(prs) < 3 or len(lts) < 2: continue
++        o0, o1 = lts[0]['bb'][al + 3], lts[-1]['bb'][al]
++        vz = [(p0['bb'][5], p1['bb'][2]) for p0, p1 in zip(prs, prs[1:]) if p1['bb'][2] - p0['bb'][5] > 150]
++        if not vz or o1 - o0 < 150: continue
++        pi = pn['pecas'][0]; USINADOS[pi] = dict(u=(o0, o1), z=vz, al=al)
++        cxs = []
++        def sub(a0_, a1_, z0_, z1_):
++            bb_ = list(b); bb_[al], bb_[al + 3], bb_[2], bb_[5] = a0_, a1_, z0_, z1_; cxs.append(bb_)
++        sub(b[al], o0, b[2], b[5]); sub(o1, b[al + 3], b[2], b[5])
++        zz = [b[2]] + [v for z_ in vz for v in z_] + [b[5]]
++        for z0_, z1_ in zip(zz[0::2], zz[1::2]):
++            if z1_ - z0_ > 0.5: sub(o0, o1, z0_, z1_)
++        P[pi]['fq'] = [fq_ for c_ in cxs for fq_ in _caixa_fq(c_)]
++        print('PAINEL USINADO:', pn['desc'], pn['dim'], '->', len(vz), 'vão(s)')
+ grupos = geo.agrupar_vistas2([w for w in paredes if not w.get('divisoria')])
+ _DIVW = [w['id'] for w in paredes if w.get('divisoria')]
+ nao_achados = [(d, dm) for n, (d, dm) in enumerate(linhas, 1) if not any(i['n'] == n for i in inst)]
+@@ -445,7 +558,7 @@ for v in V:
+ for v in V:
+     v.setdefault('letras', [v['letra'] + (str(j + 1) if len(v['paredes']) > 1 else '') for j in range(len(v['paredes']))])
+     v['titulo'] = 'VISTA ' + v['letras'][0] if len(v['letras']) == 1 else 'VISTAS ' + ' E '.join(v['letras'])
+-    if v.get('divisoria'): v['titulo'] = 'DIVISÓRIA RIPADA'
++    if v.get('divisoria'): v['titulo'] = PW[v['paredes'][0]].get('bloco') or 'DIVISÓRIA RIPADA'
+     # REGRA (João): LISTAGEM sempre FRONTAL e POR PAREDE (só os móveis daquela parede); o bloco junta só as cotas.
+     v['subs'] = [v] if len(v['paredes']) == 1 else [dict(letra=l_, letras=[l_], titulo='VISTA ' + l_, img3d=None, paredes=[w_]) for w_, l_ in zip(v['paredes'], v['letras'])]
+ VW = [s_ for v in V for s_ in v['subs']]
+@@ -594,7 +707,30 @@ def cotar_divisoria(page, G, ox, fy, k):
+     cadeia_v(page, zs, X(u1) + 16, X(u1) + 2, Y)
+     cadeia_v(page, [ZP, ztop_], X(u0) - 16, X(u0) - 2, Y)
+ 
++def _u_de(G, c, al):   # coordenada do DXF (eixo al) -> coordenada u da elevação
++    f = G['f']; return c * (f[1] if al == 0 else -f[0])
++
++def cotar_bloco(page, G, ox, fy, k):
++    # REGRA (v26): BLOCO DE PAINÉIS (painel com nichos). Cota: largura total, VÃOS USINADOS do painel (largura e altura
++    # de cada vão e das faixas entre eles), altura do painel a partir do piso pronto e até o teto (painel do teto).
++    X = lambda u: ox + (u - G['umin']) * k
++    Y = lambda z: fy - z * k
++    bx = G['boxes']; f = G['f']; ad = 0 if f[0] else 1
++    fin = [b for b in bx if b['it']['bb'][ad + 3] - b['it']['bb'][ad] <= 30]
++    pn = max(fin or bx, key=lambda b: (b['u1'] - b['u0']) * (b['z1'] - b['z0']))
++    zt = max(b['z1'] for b in bx); u0, u1 = G['umin'], G['umax']
++    us_, zs_ = [pn['u0'], pn['u1']], [pn['z0'], pn['z1']]
++    ui = USINADOS.get(pn['it']['pecas'][0])
++    if ui:
++        us_ += [_u_de(G, c, ui['al']) for c in ui['u']]; zs_ += [v for z_ in ui['z'] for v in z_]
++    cadeia_h(page, us_, Y(pn['z0']) + 14, Y(pn['z0']) + 2, X, fundo=True)
++    cadeia_h(page, [u0, u1], Y(zt) - 14, Y(zt) - 2, X)
++    xr = X(max(pn['u1'], u1))
++    cadeia_v(page, zs_, xr + 14, X(pn['u1']) + 2, Y)
++    cadeia_v(page, [ZP, pn['z0'], pn['z1'], zt], xr + 30, xr + 2, Y)
++
+ def cotar(page, G, ox, fy, k):
++    if G['w'].get('bloco'): return cotar_bloco(page, G, ox, fy, k)
+     if G['w'].get('divisoria'): return cotar_divisoria(page, G, ox, fy, k)
+     X = lambda u: ox + (u - G['umin']) * k
+     Y = lambda z: fy - z * k
+@@ -714,7 +850,7 @@ def geom_lateral(w):
+         boxes.append(dict(it=it, h0=max(h0, 0), h1=h1, z0=b[2], z1=b[5]))
+     faces.sort(key=lambda t: t[0])            # vista pelo lado de u maior: o mais perto por último
+     hmax = max(b['h1'] for b in boxes); zmax = max(b['z1'] for b in boxes)
+-    return dict(faces=faces, boxes=boxes, hmax=hmax, zmax=zmax, esp=150, divisoria=bool(w.get('divisoria')))
++    return dict(faces=faces, boxes=boxes, hmax=hmax, zmax=zmax, esp=150, divisoria=bool(w.get('divisoria')), bloco=w.get('bloco'))
+ 
+ def desenhar_lateral(page, L, ox, fy, k, ztop):
+     X = lambda h: ox + h * k
+@@ -730,6 +866,13 @@ def desenhar_lateral(page, L, ox, fy, k, ztop):
+ def cotar_lateral(page, L, ox, fy, k):
+     X = lambda h: ox + h * k
+     Y = lambda z: fy - z * k
++    if L.get('bloco'):   # REGRA (v26): bloco de painéis de lado: profundidade do painel e do painel do teto + alturas
++        bx = L['boxes']; ver = [b for b in bx if b['z1'] - b['z0'] >= 800]; dei = [b for b in bx if b['h1'] - b['h0'] >= 500]
++        hv = max([b['h1'] for b in ver] or [0]); zt = L['zmax']
++        cadeia_h(page, [0, hv, L['hmax']], Y(zt) - 13, Y(zt) - 2, X)
++        if hv > 1: cadeia_h(page, [0, L['hmax']], Y(zt) - 26, Y(zt) - 2, X)
++        zs = [ZP, zt] + [min(b['z0'] for b in ver)] * bool(ver) + [v for b in dei for v in (b['z0'], b['z1'])]
++        xr = X(L['hmax']); cadeia_v(page, zs, xr + 14, xr + 2, Y); return
+     if L.get('divisoria'):   # divisória: só profundidade total e altura total
+         cadeia_h(page, [0, L['hmax']], fy + 13, fy + 2, X)
+         xr = X(L['hmax']); cadeia_v(page, [ZP, L['zmax']], xr + 14, xr + 2, Y); return
+@@ -1076,6 +1219,8 @@ def geom_parede(w):
+             _pr.append((dep(fc), [(uu(v[0], v[1], f), v[2]) for v in fc], (0.9, 0.9, 0.9), [True] * 4))
+     umin_ = min(b['u0'] for b in boxes); umax_ = max(b['u1'] for b in boxes); zmax_ = max(b['z1'] for b in boxes)
+     vmin_, vmax_, ztop_ = _vista_limites(w, f, umin_, umax_, zmax_)
++    if w.get('bloco'):   # REGRA (v26): bloco de painéis (móvel sozinho, estreito) = elevação curta em volta dele -> escala maior
++        vmin_ = max(vmin_, umin_ - 600); vmax_ = min(vmax_, umax_ + 600)
+     Cc = (sum((x['it']['bb'][0] + x['it']['bb'][3]) / 2 for x in boxes) / len(boxes), sum((x['it']['bb'][1] + x['it']['bb'][4]) / 2 for x in boxes) / len(boxes))
+     wf = []
+     # REGRA (v15, João): a cota NÃO elimina as paredes. A vista abre até as paredes laterais (com a espessura delas)
+@@ -1399,6 +1544,7 @@ def abertos(w):
+         if mb[al + 3] - mb[al] > 2000 or mb[5] - mb[2] > 1200 or tem_porta(m, w): continue
+         g = [m] + [o for o in w['itens'] if o['tipo'] == 'comp' and id(o) not in ja
+                    and all(min(o['bb'][k + 3], mb[k + 3]) - max(o['bb'][k], mb[k]) > -5 for k in range(3))
++                   and (o['bb'][5] - o['bb'][2]) <= (mb[5] - mb[2]) + 150   # REGRA (v26): painel alto (tamponamento até o teto) não entra no detalhe do nicho
+                    and o['bb'][al] >= mb[al] - 150 and o['bb'][al + 3] <= mb[al + 3] + 150]
+         for i in g: ja.add(id(i))
+         out.append(g)
+@@ -1452,6 +1598,8 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
+         def dentro_(bb, pi=None):
+             if not (prof_(bb) <= 1000 and bb[axl + 3] >= U[axl] - 1800 and bb[axl] <= U[axl + 3] + 1800): return False
+             if pi in _tg: return True
++            # REGRA (v26, só parede cortada / bloco): o que fica todo ATRÁS do plano da vista (outro ambiente) não aparece
++            if (w0.get('cortada') or w0.get('bloco')) and max((w0['plano'] - bb[axd]) * sg, (w0['plano'] - bb[axd + 3]) * sg) < -100: return False
+             cz = sum(((bb[k_] + bb[k_ + 3]) / 2 - cam[k_]) * fw[k_] for k_ in range(3))
+             return cz > D * 0.8   # vizinho não fica entre a câmera e a parede
+     cor = {}
+@@ -1463,6 +1611,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
+         b = p_['bb']
+         sd_ = sorted(p_['dim'])
+         if _iso is not None and p_['i'] not in _iso: continue
++        if p_['i'] in DUP_I: continue
+         if p_['i'] in AMB_I or p_['i'] in ELETRO_I:
+             if itens: continue   # detalhe (nicho/costas): só os móveis, sem pedra/eletros
+             if (dentro_(b, p_['i']) if ctx else all(b[k] <= E[k + 3] and b[k + 3] >= E[k] for k in range(3))):
+@@ -1596,6 +1745,8 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
+             b = i['bb']; fi = FV[PW[i['parede']]['key']]; axi = 0 if fi[0] else 1
+             c3 = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2]
+             c3[axi] = b[axi] if (fi[axi] > 0) != bool(kw.get('costas')) else b[axi + 3]
++            _us = USINADOS.get(i['pecas'][0])
++            if _us: c3[_us['al']] = (b[_us['al']] + _us['u'][0]) / 2   # painel usinado: balão na faixa cheia, não no vão
+             t3 = pj(c3); cx, cy = T(t3[0], t3[1]); t_ = str(nb); wv = fz.get_text_length(t_, 'hebo', 7) + 4
+             # REGRA: balões não ficam um em cima do outro -> desloca o novo e liga ao ponto com traço fino
+             bx, by = cx, cy
+@@ -1799,6 +1950,32 @@ for v, c in zip(com_img, cel):
+ for j in range(1, _nc): p.draw_line((a.x0 + j * a.width / _nc, AREA.y0), (a.x0 + j * a.width / _nc, AREA.y1), color=PRETO, width=0.6)
+ for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.x1, a.y0 + j * a.height / _nr), color=PRETO, width=0.6)
+ 
++# REGRA (v26, João): LISTAGEM POLUÍDA (mais de 15 linhas) = DUAS pranchas: SUPERIORES (armários de cima e altos) e
++# INFERIORES (balcões). Cada uma com a tabela e os balões só das suas peças (numeração própria). Sem os dois grupos:
++# divide a parede ao meio (PARTE 1 / PARTE 2).
++LIST_MAX = 15; _extra = 0
++def _partes(s_):
++    global _extra
++    its = [i for w in s_['paredes'] for i in PW[w]['itens']]
++    if len(s_['linhas']) <= LIST_MAX or not its: return [s_]
++    sup = [i for i in its if (i['bb'][2] + i['bb'][5]) / 2 > 1300]; inf = [i for i in its if i not in sup]
++    if sup and inf: gs = [('SUPERIORES', sup), ('INFERIORES', inf)]
++    else:
++        f_ = FV[PW[s_['paredes'][0]]['key']]; al = 1 if f_[0] else 0
++        o_ = sorted(its, key=lambda i: (i['bb'][al] + i['bb'][al + 3]) / 2); h_ = len(o_) // 2
++        gs = [('PARTE 1', o_[:h_]), ('PARTE 2', o_[h_:])]
++    out = []
++    for k_, (nome, g) in enumerate(gs):
++        key = f"{s_['letra']}{k_ + 1}"; chv = []
++        for i in sorted(g, key=lambda i: (i['tipo'] != 'mod', i['n'])):
++            if (i['desc'], i['dim']) not in chv: chv.append((i['desc'], i['dim']))
++        for i in g: i['num_' + key] = chv.index((i['desc'], i['dim'])) + 1
++        lin = [(d, dm, '') for d, dm in chv]
++        if k_ == 0 and s_ is VW[0]: lin += [(d, dm, '*') for d, dm in nao_achados]
++        out.append(dict(letra=key, titulo=f"{s_['titulo']} - {nome}", linhas=lin, paredes=s_['paredes'], ids={id(i) for i in g}, primeiro=k_ == 0, base=s_))
++    _extra += len(out) - 1
++    return out
++
+ # por bloco: listagem de cada parede (frontal) e depois as cotas do bloco (paredes lado a lado)
+ for v in V:
+     GS = [geom_parede(PW[w]) for w in v['paredes']]
+@@ -1812,6 +1989,9 @@ for v in V:
+         cm_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in its_) / len(its_)
+         dd_ = [i for i in its_ if abs((i['bb'][axd_] + i['bb'][axd_ + 3]) / 2 - w_['plano']) > 120]   # peças fora da faixa = perna do L
+         lado_ = (sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in dd_) / len(dd_) - cm_) * rd_[ax_] if dd_ else 1
++        if w_.get('bloco'):   # REGRA (v26): bloco de painéis = lateral vista pelo lado onde estão os móveis (de dentro do ambiente)
++            _ms = [i for i in inst if i['tipo'] == 'mod']
++            if _ms: lado_ = (sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in _ms) / len(_ms) - cm_) * rd_[ax_]
+         for ang_ in (0, (90 if lado_ > 0 else -90)):   # REGRA (v24, João): 2ª imagem = LATERAL RETA (90°), não diagonal
+             n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {v['titulo']}")
+             r_img = fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1)
+@@ -1830,10 +2010,10 @@ for v in V:
+             for i in its_v: i['num_' + lt_l] = chv_l.index((i['desc'], i['dim'])) + 1
+             tabela(p, [(d, dm, '') for d, dm in chv_l], AREA_IN.x0, AREA_IN.y0)
+             render3d(p, r_img, v['paredes'], letra=lt_l, itens=its_, ang=ang_, elev=6, dmin=5200, margem=60, isolado=True)
+-    for s_ in ([] if v.get('divisoria') else v['subs']):
++    for s_ in ([] if v.get('divisoria') else [q_ for s0_ in v['subs'] for q_ in _partes(s0_)]):
+         n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']}")
+         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)
+-        if nao_achados and s_ is VW[0]:
++        if nao_achados and s_.get('base', s_) is VW[0] and s_.get('primeiro', True):
+             p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
+         # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela; continua desenhado na imagem
+         # grande, mas os balões dele ficam SÓ no detalhe (imagem grande menos poluída)
+@@ -1843,6 +2023,10 @@ for v in V:
+         cts = [(w, c + [o for o in costas_paineis(PW[w]) if o not in c], 'costas') for w in s_['paredes'] for c in [costas(PW[w])] if c or costas_paineis(PW[w])]
+         mps = [(w, t_) for w in s_['paredes'] for t_ in pequenos(PW[w])]
+         rds = [(w, r_) for w in s_['paredes'] for r_ in [rodapes(PW[w])] if r_]
++        if s_.get('ids') is not None:   # prancha dividida: só os detalhes das peças desta parte
++            _ok = lambda c: any(id(i) in s_['ids'] for i in c)
++            nis = [(w, c) for w, c in nis if _ok(c)]; cts = [(w, c, t) for w, c, t in cts if _ok(c)]
++            mps = [(w, t_) for w, t_ in mps if _ok(t_['todos'])]; rds = [(w, r_) for w, r_ in rds if _ok(r_)]
+         render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'], contexto=True,
+                  sem_balao={id(i) for _, c in nis for i in c} | {id(i) for _, c, _ in cts for i in c} | {id(i) for _, t_ in mps for i in t_['todos']} | {id(i) for _, r_ in rds for i in r_})
+         nis = [(w, c, 'nicho') for w, c in nis] + cts + [(w, t_['mostra'], 'modulo') for w, t_ in mps] + [(w, r_, 'rodape') for w, r_ in rds]
+@@ -1890,7 +2074,7 @@ for v in V:
+     nc = len(GS); zm = max(G['ztop'] for G in GS)
+     Wm = [G['vmax'] - G['vmin'] for G in GS]
+     # REGRA (v16, João): parede sozinha na prancha -> a prancha se divide: FRONTAL à esquerda, LATERAL do móvel à direita
+-    LT = geom_lateral(PW[v['paredes'][0]]) if nc == 1 else None
++    LT = None   # REGRA (v26, João): COTA É SÓ A VISTA FRONTAL. Não tem vista lateral na prancha de cotas.
+     Wl = (LT['hmax'] + LT['esp'] + 350) if LT else 0
+     # REGRA (v15, João): a elevação PREENCHE a prancha (parede a parede, piso ao teto), mesma escala nas colunas;
+     # móvel pequeno não fica pequeno: escala sobe até 1:10. Colunas proporcionais ao tamanho de cada parede.
+@@ -1907,7 +2091,7 @@ for v in V:
+         ox = cx0 + (cw - Wm[j] * k) / 2 + (G['umin'] - G['vmin']) * k
+         desenhar(p, G, ox, fy, k)
+         cotar(p, G, ox, fy, k)
+-        lab = (f"DIVISÓRIA RIPADA - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][j]} - ESC. 1:{S:g}")
++        lab = (f"{v['titulo']} - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][j]} - ESC. 1:{S:g}")
+         p.insert_text((cx0 + cw / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
+         if j: p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
+     if LT:
+@@ -1915,7 +2099,7 @@ for v in V:
+         oxl = cx0 + (cwl - (LT['hmax'] + LT['esp'] + 60) * k) / 2 + LT['esp'] * k
+         desenhar_lateral(p, LT, oxl, fy, k, GS[0]['ztop'])
+         cotar_lateral(p, LT, oxl, fy, k)
+-        lab = (f"DIVISÓRIA RIPADA - LATERAL - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][0]} - LATERAL - ESC. 1:{S:g}")
++        lab = (f"{v['titulo']} - LATERAL - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][0]} - LATERAL - ESC. 1:{S:g}")
+         p.insert_text((cx0 + cwl / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
+         p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
+ 
+@@ -1992,7 +2176,7 @@ except Exception:
+     import time as _t; cfg['saida'] = os.path.splitext(cfg['saida'])[0] + _t.strftime('_%H%M%S') + '.pdf'; doc.save(cfg['saida'], garbage=3, deflate=True)
+ 
+ # ---------------- QUALIDADE (nível 1, por script) ----------------
+-esperado = 4 + len(VW) + len(V) + len(DIVISORES) + len(DIVISORIAS) + len(GAVETAS)
++esperado = 4 + len(VW) + _extra + len(V) + len(DIVISORES) + len(DIVISORIAS) + len(BLOCOS) + len(GAVETAS)
+ q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (gerado por script)", '',
+      f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas" + (f" + {len(DIVISORES)} divisor(es) de gaveta" if DIVISORES else '') + (f" + {len(GAVETAS)} gaveta(s) em painéis" if GAVETAS else '') + (f" | divisória ripada: {len(DIVISORIAS)}" if DIVISORIAS else ''),
+      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
+diff --git a/padrao.json b/padrao.json
+index 8967fc7..d6d6849 100644
+--- a/padrao.json
++++ b/padrao.json
+@@ -2,8 +2,8 @@
+  "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA",
+- "layout": "C:\\CLAUDE\\motor v25\\assets\\LAYOUT_FIXO.pdf",
+- "contrato_fonte": "C:\\CLAUDE\\motor v25\\assets\\CONTRATO.pdf",
+- "logo": "C:\\CLAUDE\\motor v25\\assets\\LOGO.png",
++ "layout": "C:\\CLAUDE\\motor v26\\assets\\LAYOUT_FIXO.pdf",
++ "contrato_fonte": "C:\\CLAUDE\\motor v26\\assets\\CONTRATO.pdf",
++ "logo": "C:\\CLAUDE\\motor v26\\assets\\LOGO.png",
+  "materiais": "MATERIAIS"
+ }
+\ No newline at end of file

@@ -25,18 +25,19 @@ def uniao(a, b):
 def dentro(b, U, tol=2.5):
     return all(b[k] >= U[k] - tol for k in range(3)) and all(b[k + 3] <= U[k + 3] + tol for k in range(3))
 
-def laterais(P):
+def laterais(P, zmin=150):
     out = []
     for p in P:
         dx, dy, dz = p['dim']
-        if min(dx, dy) <= 26 and dz >= 150 and max(dx, dy) >= 150:
+        if min(dx, dy) <= 26 and dz >= zmin and max(dx, dy) >= 150:
             p['eixo'] = 'x' if dx <= dy else 'y'
             out.append(p)
     return out
 
 def casar(P, linhas, qtd=None):
     """linhas: [(desc, 'LxAxP')]. Retorna instâncias: dict(n, desc, dim, bb, tipo, pecas)."""
-    L = laterais(P)
+    # REGRA (v26): módulo BAIXO (adega/nicho de 150 mm) tem laterais de 100-150 mm -> entram só para módulo até 200 mm
+    L = laterais(P, 100)
     usados = set(); inst = []
     # 1) componentes: peça única
     for n, (desc, dm) in enumerate(linhas, 1):
@@ -53,9 +54,29 @@ def casar(P, linhas, qtd=None):
     for n, (desc, dm) in enumerate(linhas, 1):
         if eh_componente(desc): continue
         w, h, d = parse_dim(dm)
+        orients = [(w, h, 0)]
+        # REGRA (v26): módulo GIRADO no Promob (adega deitada: XML 150 x 870 x 600 = 870 de largura, 150 de altura)
+        if h > 2 * w and w <= 300: orients.append((h, w, 5))
+        for w, h, pen in orients: cands += _cands_mod(L, n, desc, dm, w, h, d, pen)
+    cands.sort(key=lambda c: c[0])
+    ocupado = []
+    for e, n, desc, dm, ia, ib, U, wr in cands:
+        if ia in usados or ib in usados: continue
+        if any(_sobrepoe(U, O) for O in ocupado): continue
+        usados.update((ia, ib)); ocupado.append(U)
+        inst.append(dict(n=n, desc=desc, dim=dm, bb=U, tipo='mod', pecas=[ia, ib], larg=wr))
+    # peças internas de cada módulo (para o desenho), portas ficam fora porque estão à frente das laterais
+    for it in inst:
+        if it['tipo'] == 'mod':
+            it['pecas'] = [p['i'] for p in P if dentro(p['bb'], it['bb'])]
+    return inst
+
+def _cands_mod(L, n, desc, dm, w, h, d, pen=0):
+        cands = []
         tw, td = (45, 110) if 'canto' in desc.lower() else (TOL, 70)
         tz0 = 160 if 'rodap' in desc.lower() else TOL
         for a, b in itertools.combinations(L, 2):
+            if h > 200 and min(a['dim'][2], b['dim'][2]) < 150: continue
             if abs(a['bb'][2] - b['bb'][2]) > tz0 or abs(a['bb'][5] - b['bb'][5]) > TOL: continue
             U = uniao(a['bb'], b['bb'])
             ux, uy, uz = U[3] - U[0], U[4] - U[1], U[5] - U[2]
@@ -72,19 +93,8 @@ def casar(P, linhas, qtd=None):
                 ia = (a['bb'][1], a['bb'][4]) if a['eixo'] == 'x' else (a['bb'][0], a['bb'][3])
                 ib = (b['bb'][1], b['bb'][4]) if b['eixo'] == 'x' else (b['bb'][0], b['bb'][3])
                 if abs(ia[0] - ib[0]) > 30 or abs(ia[1] - ib[1]) > 30: continue
-            cands.append((best, n, desc, dm, a['i'], b['i'], U))
-    cands.sort(key=lambda c: c[0])
-    ocupado = []
-    for e, n, desc, dm, ia, ib, U in cands:
-        if ia in usados or ib in usados: continue
-        if any(_sobrepoe(U, O) for O in ocupado): continue
-        usados.update((ia, ib)); ocupado.append(U)
-        inst.append(dict(n=n, desc=desc, dim=dm, bb=U, tipo='mod', pecas=[ia, ib]))
-    # peças internas de cada módulo (para o desenho), portas ficam fora porque estão à frente das laterais
-    for it in inst:
-        if it['tipo'] == 'mod':
-            it['pecas'] = [p['i'] for p in P if dentro(p['bb'], it['bb'])]
-    return inst
+            cands.append((best + pen, n, desc, dm, a['i'], b['i'], U, w))
+        return cands
 
 def _sobrepoe(A, B, folga=5):
     return all(min(A[k + 3], B[k + 3]) - max(A[k], B[k]) > folga for k in range(3))
@@ -105,7 +115,7 @@ def parede_de(it, lim, P):
         a = P[it['pecas'][0]].get('eixo') if False else None
     # eixo ao longo da parede = maior extensão horizontal (módulo: largura; painel: comprimento)
     if it['tipo'] == 'mod':
-        w = parse_dim(it['dim'])[0]
+        w = it.get('larg') or parse_dim(it['dim'])[0]
         ao_longo = 'x' if abs(dx - w) <= abs(dy - w) else 'y'
     else:
         ao_longo = 'x' if dx >= dy else 'y'
@@ -178,7 +188,7 @@ def dist_caixas(A, B):
 def _ao_longo(it):
     b = it['bb']; dx, dy = b[3] - b[0], b[4] - b[1]
     if it['tipo'] == 'mod':
-        w = parse_dim(it['dim'])[0]
+        w = it.get('larg') or parse_dim(it['dim'])[0]
         return 'x' if abs(dx - w) <= abs(dy - w) else 'y'
     return 'x' if dx >= dy else 'y'
 

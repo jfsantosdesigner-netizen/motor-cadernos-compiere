@@ -1,7 +1,24 @@
-MOTOR DE CADERNOS COMPIERE - v25 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v26 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v26 (25/09/2026) - nuvem, aguardando teste do João (9 projetos regerados; os 8 antigos iguais à v25)
+ Projeto novo: PRISCILA COZINHA (exemplos/PRISCILA_COZINHA), comparado com o caderno feito à mão (só ideias)
+ - CONDIÇÃO "PAREDE CORTADA POR PILAR / VÃO": móveis da mesma parede dos dois lados de uma parede real que atravessa a
+   faixa dos móveis (pilar, verga de vão de passagem) = duas vistas (cada lado com listagem e cotas próprias)
+ - CONDIÇÃO "CONJUNTO DE PAINÉIS SEM MÓDULO": paredes só com painéis que se encostam (painel com nichos na ponta da parede,
+   painel do teto, agastadores) = BLOCO PRÓPRIO no fim ("PAINEL COM NICHOS"): 3D frontal + 3D lateral reta (móvel sozinho),
+   cota frontal (vãos usinados, alturas do piso) + lateral (profundidade do painel do teto)
+ - CONDIÇÃO "PAINEL USINADO": painel em pé na frente de estrutura de nichos aberta = painel com os vãos alinhados aos nichos
+ - DIVISOR DE GAVETA: vale também para divisor de TALHER de cozinha (peças até 750 mm, conjunto até 800 x 800, peças deitadas)
+ - MÓDULO BAIXO / GIRADO (adega 150 x 870 x 600): laterais de 100-150 mm e módulo girado no Promob agora são achados
+ - Porta avulsa do XML (ID POR_...) = porta: não entra na listagem (como as outras portas)
+ - Peça do DXF duplicada no lugar de uma peça listada (fora do XML) não é desenhada
+ - Detalhe de NICHO não leva painel alto (tamponamento até o teto) encostado
+ - Barrote/Cunha NÃO faz parte (João): lista só material (Cunha sai da listagem)
+ - LISTAGEM POLUÍDA (mais de 15 linhas) = DUAS pranchas: SUPERIORES e INFERIORES (ou PARTE 1 / PARTE 2), balões e tabela só de cada parte
+ - COTA É SÓ A VISTA FRONTAL (João): a prancha de cotas não tem mais a vista lateral
 
 v25 (25/09/2026) - PC: C:\CLAUDE\motor v25 (v24 fica de reserva)
  - DIVISÓRIA RIPADA, prancha da LATERAL: a tabela e os balões trazem SÓ as peças que APARECEM nessa imagem

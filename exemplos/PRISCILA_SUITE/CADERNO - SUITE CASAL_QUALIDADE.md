@@ -1,12 +1,11 @@
 # QUALIDADE — PRISCILA / Suíte Casal (gerado por script)
 
 - APROVADO | nº de pranchas 18 = 4 + 6 listagens + 5 cotas + 1 divisor(es) de gaveta + 1 gaveta(s) em painéis | divisória ripada: 1
-- INCERTO | itens localizados no DXF: 61/63
+- INCERTO | itens localizados no DXF: 61/62
   - INCERTO: Gaveta Corrediça Telescópica 354x90x400 (não localizado; listado com * na vista A)
-  - INCERTO: Frente de Gaveta Reta 406x130x18 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais
-- VISTA A: paredes x-@120 | 10 linhas de listagem
+- VISTA A: paredes x-@120 | 9 linhas de listagem
 - VISTA B: paredes y+@-120 | 10 linhas de listagem | CONDIÇÕES -> rodapé/base (6 peças) em detalhe
 - VISTA C: paredes x+@2301L | 3 linhas de listagem | CONDIÇÕES -> perna do L com vista própria
 - VISTA D: paredes x+@4816 | 8 linhas de listagem | CONDIÇÕES -> 1 detalhe(s) de módulo pequeno, 7 peça(s) atrás de painel no detalhe das costas
@@ -21,7 +20,6 @@
   A7: Tamponamento Inferior 1605x18x100
   A8: Tamponamento Inferior 1615x18x100
   A9: Gaveta Corrediça Telescópica 354x90x400*
-  A10: Frente de Gaveta Reta 406x130x18*
   B1: Balcão Inferior 1560x675x390
   B2: Painel Nude MDP 135x18x70
   B3: Painel Nude MDP 670x18x540

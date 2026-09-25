@@ -1,6 +1,6 @@
 # QUALIDADE — CAROLINE / Cozinha (gerado por script)
 
-- APROVADO | nº de pranchas 8 = 4 + 2 listagens + 2 cotas
+- APROVADO | nº de pranchas 9 = 4 + 2 listagens + 2 cotas
 - APROVADO | itens localizados no DXF: 38/38
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais

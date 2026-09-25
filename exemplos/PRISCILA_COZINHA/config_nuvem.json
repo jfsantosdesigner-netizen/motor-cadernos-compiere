@@ -1,0 +1,19 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "PRISCILA",
+  "ambiente": "Cozinha",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "assets/LAYOUT_FIXO.pdf",
+ "contrato_fonte": "assets/CONTRATO.pdf",
+ "logo": "assets/LOGO.png",
+ "xml": "exemplos/PRISCILA_COZINHA/EXECUTIVO - COZINHA 1000318 (REVISADO).xml",
+ "xml_confere": true,
+ "dxf": "exemplos/PRISCILA_COZINHA/cozinha.dxf",
+ "pecas_json": "exemplos/PRISCILA_COZINHA/_pecas_dxf.json",
+ "vistas": [],
+ "materiais": "MATERIAIS",
+ "saida": "exemplos/PRISCILA_COZINHA/CADERNO - COZINHA.pdf"
+}

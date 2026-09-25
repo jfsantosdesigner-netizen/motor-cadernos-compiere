@@ -241,6 +241,7 @@ ELETROS = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in AMB_I and
 _topo_pedra = [p_['bb'][5] for p_ in AMB]
 def _eletro_ok(p_):
     if len(p_['faces']) <= 12: return False
+    if p_['bb'][2] < 50 and p_['bb'][5] < 250: return False   # base/rodapé solto no chão não é eletro
     for t_ in _topo_pedra:
         if p_['bb'][2] <= t_ + 15 and p_['bb'][5] > t_ - 60: return p_['bb'][5] <= t_ + 300
     return True
@@ -275,7 +276,8 @@ def _arestas(faces):
 for p_ in AMB + ELETROS + MALHA_PAR:
     p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]; p_['ft'] = _arestas(p_['faces'])
 PAR_DXF = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in {q['i'] for q in AMB} and p_['i'] not in ELETRO_I and 60 <= min(p_['dim'][0], p_['dim'][1]) <= 400
-           and max(p_['dim'][0], p_['dim'][1]) >= 100 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) < 20000]
+           and max(p_['dim'][0], p_['dim'][1]) >= 100 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) < 20000
+           and not (p_['bb'][2] < 50 and p_['dim'][2] < 1000)]   # peça baixa no chão (rodapé solto) não é parede
 for p_ in AMB: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
 print('AMBIENTE (pedra):', len(AMB), 'peças')
 PW = {w['id']: w for w in paredes}
@@ -1023,12 +1025,27 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             shell.append(b)
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
     if ctx and MALHA_PAR:
+        _cob = []; _ilha = U[5] <= 1200   # móvel baixo solto (ilha/bancada): sem parede inventada nem laterais distantes
         for p_ in MALHA_PAR:
             for fc, fl in zip(p_['faces'], p_['ft']):
                 c_ = [sum(v[k_] for v in fc) / len(fc) for k_ in range(3)]
                 if min((w0['plano'] - v[axd]) * sg for v in fc) > 1300: continue
-                if c_[axl] < U[axl] - 1800 or c_[axl] > U[axl + 3] + 1800: continue
+                if c_[axl] < U[axl] - 700 or c_[axl] > U[axl + 3] + 700: continue
+                if max(v[axd] for v in fc) - min(v[axd] for v in fc) < 1:   # face "de frente" para a câmera
+                    pf = (w0['plano'] - c_[axd]) * sg
+                    if pf > 100: continue            # parede NA FRENTE do fundo dos móveis: esconderia móvel
+                    lo_, hi_ = max(U[axl], min(v[axl] for v in fc)), min(U[axl + 3], max(v[axl] for v in fc))
+                    if hi_ > lo_: _cob.append((lo_, hi_))
+                elif _ilha: continue
                 src.append((fc, (0.94, 0.94, 0.94), fl, 0, -1))
+        _tot = 0; _fim = U[axl]
+        for lo_, hi_ in sorted(_cob):
+            lo_ = max(lo_, _fim)
+            if hi_ > lo_: _tot += hi_ - lo_; _fim = hi_
+        if not _ilha and _tot < 0.5 * (U[axl + 3] - U[axl]):   # REGRA: parede real cobre < metade dos móveis -> parede de fundo de referência
+            bf = [0.0] * 6; bf[axl] = U[axl] - 400; bf[axl + 3] = U[axl + 3] + 400; bf[2] = 0; bf[5] = U[5] + 150
+            pl0 = w0['plano']; bf[axd], bf[axd + 3] = (pl0, pl0 + 100) if sg > 0 else (pl0 - 100, pl0)
+            for fc in caixa_faces(bf): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
     if ctx and (PAR_DXF or MALHA_PAR):
         # REGRA (João): paredes reais do DXF que compõem o L (fundo e laterais), com janela/abertura; tira só as que ficam na frente
         for p_ in PAR_DXF:
@@ -1219,12 +1236,13 @@ for it in inst:
 fcs = []
 # REGRA (João): planta só com MÓVEIS e PAREDES (sem forro, sanca, pedra, eletros por cima dos móveis)
 _par_ids = {p_['i'] for p_ in PAREDES_PECAS} | {p_['i'] for p_ in PAR_DXF}
-for p_ in MALHA_PAR:   # paredes em peça única: faces de cima (contorno das paredes)
+_linhas_par = set()
+for p_ in MALHA_PAR:   # paredes em peça única: faces verticais viram as linhas das paredes (vãos ficam abertos)
     for fc in p_['faces']:
-        if max(v[2] for v in fc) - min(v[2] for v in fc) > 1 or min(v[2] for v in fc) < 1800: continue
-        q = [(PX(v[0]), PY(v[1])) for v in fc]
-        if area2(q) < 0.2: continue
-        fcs.append((9e9, q, (0.55, 0.55, 0.55), [False] * len(fc)))
+        zs_ = [v[2] for v in fc]
+        if max(zs_) - min(zs_) < 500 or min(zs_) > 1200: continue
+        xy = sorted({(round(v[0]), round(v[1])) for v in fc})
+        if len(xy) >= 2 and math.dist(xy[0], xy[-1]) > 20: _linhas_par.add((xy[0], xy[-1]))
 for p_ in P:
     b = p_['bb']
     if p_['i'] not in _usadas and p_['i'] not in _par_ids: continue
@@ -1247,6 +1265,8 @@ for z, q, cor, ft in fcs:
             if f_: sh.draw_line(a_, b_)
         sh.finish(color=PRETO if cor is None else (0.3, 0.3, 0.3), width=0.5 if cor is None else 0.3, closePath=False)
 sh.commit()
+for (a_, b_) in _linhas_par:
+    p.draw_line((PX(a_[0]), PY(a_[1])), (PX(b_[0]), PY(b_[1])), color=PRETO, width=0.9)
 for w in paredes:          # cotas da planta: por parede, do lado de fora
     f = FV[w['key']]; its = w['itens']
     if w['key'][0] == 'x':

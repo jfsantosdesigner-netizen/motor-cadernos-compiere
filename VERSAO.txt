@@ -1,9 +1,16 @@
-MOTOR DE CADERNOS COMPIERE - v12 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v13 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
 
-v12 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC (testada no 4º projeto: Caroline / Cozinha)
+v13 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC (4 projetos regerados)
+ - planta: paredes em peça única desenhadas pelas faces verticais (vãos de porta/janela abertos)
+ - 3D: parede real que fica NA FRENTE do fundo dos móveis não entra (não esconde móvel)
+ - 3D: sem parede real atrás de móvel ALTO (cobre < metade) -> parede de fundo de referência
+ - ilha/bancada baixa (até 1,20 m): sem parede inventada nem paredes laterais distantes
+ - rodapé/base solta no chão não conta como parede nem como eletro
+
+v12 (25/09/2026) - Caroline / Cozinha
  - corrigido: riscos diagonais (triangulação) nas cotas 2D, no 3D e na planta; só contornos reais
  - relatório de qualidade avisa textura faltando; texturas novas: Areia, Itapuã
 

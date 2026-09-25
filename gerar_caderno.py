@@ -291,8 +291,71 @@ PAR_DXF = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in {q['i'] f
            and not (p_['bb'][2] < 50 and p_['dim'][2] < 1000)]   # peça baixa no chão (rodapé solto) não é parede
 for p_ in AMB: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
 print('AMBIENTE (pedra):', len(AMB), 'peças')
+# ===== REGRAS ESPECIAIS (v18, PDF da Priscila) — só atuam quando o projeto tem esses móveis =====
+def _sd(it): return sorted(parse_dim_(it['dim']))
+def parse_dim_(dm):
+    try: return [float(x) for x in re.findall(r'[\d.]+', dm.replace(',', '.'))[:3]]
+    except Exception: return [0, 0, 0]
+def _toca(a, b, tol=6): return geo.dist_caixas(a['bb'], b['bb']) <= tol
+_comps = [i for i in inst if i['tipo'] == 'comp']
+# 1) DIVISÓRIA RIPADA: 6+ ripas (espessura <= 30, largura 60-200, comprimento >= 500) na MESMA faixa de profundidade,
+#    enfileiradas ao longo de um eixo. Vira um BLOCO PRÓPRIO (listagem + cotas só dela), fora das paredes.
+DIVISORIAS = []
+_rip = [i for i in _comps if (lambda d: d[0] <= 30 and 60 <= d[1] <= 200 and d[2] >= 500)(_sd(i))]
+for axd in (0, 1):   # axd = eixo da profundidade (as ripas têm a largura de 150 nesse eixo)
+    grp = {}
+    for i in _rip:
+        b = i['bb']
+        if 60 <= b[axd + 3] - b[axd] <= 200: grp.setdefault((round(b[axd] / 10), round(b[axd + 3] / 10)), []).append(i)
+    for key_, rs in grp.items():
+        if len(rs) < 6 or any(i.get('_div') for i in rs): continue
+        d0, d1 = min(i['bb'][axd] for i in rs), max(i['bb'][axd + 3] for i in rs)
+        conj = list(rs); topo = max(i['bb'][5] for i in rs)
+        for i in rs: i['_div'] = True
+        mudou = True
+        while mudou:
+            mudou = False
+            for c in _comps:
+                if c.get('_div'): continue
+                b = c['bb']; dentro = b[axd] >= d0 - 30 and b[axd + 3] <= d1 + 30
+                faixa = b[2] <= 100 or b[5] >= topo - 130 or (b[5] - b[2]) >= 0.8 * topo
+                if (dentro or faixa) and any(_toca(c, o) for o in conj):
+                    conj.append(c); c['_div'] = True; topo = max(topo, b[5]); mudou = True
+        DIVISORIAS.append(dict(itens=conj, axd=axd, d0=d0, d1=d1))
+# 2) DIVISOR DE GAVETA (joias/talheres): 4+ peças finas (<= 18) e baixas (<= 100) de até 450 mm, nos dois sentidos,
+#    encostadas, acima do piso. Sai da listagem da parede e ganha uma PRANCHA PRÓPRIA (vista de cima com cotas).
+DIVISORES = []
+_dv = [i for i in _comps if not i.get('_div') and i['bb'][2] > 150 and (lambda d: d[0] <= 18 and d[1] <= 100 and d[2] <= 450)(_sd(i))]
+_vis = set()
+for i in _dv:
+    if id(i) in _vis: continue
+    g_ = [i]; _vis.add(id(i)); k_ = 0
+    while k_ < len(g_):
+        for o in _dv:
+            if id(o) not in _vis and _toca(g_[k_], o, 3): g_.append(o); _vis.add(id(o))
+        k_ += 1
+    ori = {0 if (o['bb'][3] - o['bb'][0]) > (o['bb'][4] - o['bb'][1]) else 1 for o in g_}
+    U_ = [min(o['bb'][0] for o in g_), min(o['bb'][1] for o in g_), max(o['bb'][3] for o in g_), max(o['bb'][4] for o in g_)]
+    if len(g_) >= 4 and len(ori) == 2 and U_[2] - U_[0] <= 500 and U_[3] - U_[1] <= 500:
+        DIVISORES.append(g_)
+_fora = {id(i) for d in DIVISORIAS for i in d['itens']} | {id(i) for g_ in DIVISORES for i in g_}
+if _fora:
+    for w in paredes: w['itens'] = [i for i in w['itens'] if id(i) not in _fora]
+    paredes = [w for w in paredes if w['itens']]
+for d in DIVISORIAS:   # parede "virtual" da divisória: vista pelo lado do painel (peça larga e fina), senão pelo lado do ambiente
+    axd = d['axd']; its = d['itens']
+    lrg = [i for i in its if _sd(i)[1] > 300 and d['d0'] - 30 <= i['bb'][axd] and i['bb'][axd + 3] <= d['d1'] + 30]
+    mid = (d['d0'] + d['d1']) / 2
+    if lrg: menor = sum((i['bb'][axd] + i['bb'][axd + 3]) / 2 for i in lrg) / len(lrg) < mid
+    else: menor = sum((i['bb'][axd] + i['bb'][axd + 3]) / 2 for i in inst) / len(inst) < mid
+    key = ('x+' if menor else 'x-') if axd == 0 else ('y+' if menor else 'y-')
+    pl = d['d1'] if menor else d['d0']
+    w = dict(key=key, plano=pl, itens=its, id=f"DIVISORIA@{round(pl)}", divisoria=True)
+    for i in its: i['parede'] = w['id']
+    paredes.append(w); d['parede'] = w['id']
 PW = {w['id']: w for w in paredes}
-grupos = geo.agrupar_vistas2(paredes)
+grupos = geo.agrupar_vistas2([w for w in paredes if not w.get('divisoria')])
+_DIVW = [w['id'] for w in paredes if w.get('divisoria')]
 nao_achados = [(d, dm) for n, (d, dm) in enumerate(linhas, 1) if not any(i['n'] == n for i in inst)]
 
 # vistas: liga cada grupo à imagem 3D do config pela peça de referência
@@ -319,9 +382,12 @@ for g in livres:
     for b in blocos:
         ls = [letras[_nl + k] for k in range(len(b))]; _nl += len(b)
         V.append(dict(letra=ls[0], letras=ls, img3d=None, paredes=b))
+for wid in _DIVW:   # REGRA (v18): divisória ripada = bloco próprio no fim
+    V.append(dict(letra=letras[_nl], letras=[letras[_nl]], img3d=None, paredes=[wid], divisoria=True)); _nl += 1
 for v in V:
     v.setdefault('letras', [v['letra'] + (str(j + 1) if len(v['paredes']) > 1 else '') for j in range(len(v['paredes']))])
     v['titulo'] = 'VISTA ' + v['letras'][0] if len(v['letras']) == 1 else 'VISTAS ' + ' E '.join(v['letras'])
+    if v.get('divisoria'): v['titulo'] = 'DIVISÓRIA RIPADA'
     # REGRA (João): LISTAGEM sempre FRONTAL e POR PAREDE (só os móveis daquela parede); o bloco junta só as cotas.
     v['subs'] = [v] if len(v['paredes']) == 1 else [dict(letra=l_, letras=[l_], titulo='VISTA ' + l_, img3d=None, paredes=[w_]) for w_, l_ in zip(v['paredes'], v['letras'])]
 VW = [s_ for v in V for s_ in v['subs']]
@@ -429,7 +495,35 @@ def _uniq(vals, tol=2.0):
 # nível do piso pronto: placa de piso do DXF (grande, fina, no chão). Cotas de altura partem daqui.
 ZP = max([p_['bb'][5] for p_ in P if min(p_['dim'][0], p_['dim'][1]) > 1500 and p_['dim'][2] <= 60 and p_['bb'][2] <= 1] or [0])
 CORTE = 1100
+def _eh_ripa(it):
+    try: d_ = sorted(float(x) for x in re.findall(r'[\d.]+', it['dim'].replace(',', '.'))[:3])
+    except Exception: return False
+    return len(d_) == 3 and d_[0] <= 30 and 60 <= d_[1] <= 200 and d_[2] >= 500
+
+def cotar_divisoria(page, G, ox, fy, k):
+    # REGRA (v18, PDF do João): divisória ripada NÃO cota ripa por ripa. Cota: largura total + peças laterais,
+    # UMA ripa e UM vão (amostra), altura total e as alturas das partes (bases, painel, travessas).
+    X = lambda u: ox + (u - G['umin']) * k
+    Y = lambda z: fy - z * k
+    bx = G['boxes']; u0, u1 = G['umin'], G['umax']; ztop_ = max(b['z1'] for b in bx)
+    rip = sorted([b for b in bx if _eh_ripa(b['it'])], key=lambda b: b['u0'])
+    alt = [b for b in bx if not _eh_ripa(b['it']) and (b['z1'] - b['z0']) >= 0.8 * ztop_]
+    cadeia_h(page, [u0, u1] + [v for b in alt for v in (b['u0'], b['u1'])], fy + 14, fy + 2, X)
+    cadeia_h(page, [u0, u1], Y(ztop_) - 14, Y(ztop_) - 2, X)
+    viz_ = [b for b in rip if b['z1'] - b['z0'] >= 300]
+    _m = len(viz_) // 2; viz_ = viz_[_m:] + viz_[:_m]   # amostra no MEIO da divisória (ripa comum, não a da ponta)
+    for a, c in zip(viz_, viz_[1:]):
+        if c['u0'] - a['u1'] > 20:
+            zm_ = (a['z0'] + a['z1']) / 2
+            cadeia_h(page, [a['u0'], a['u1'], c['u0']], Y(zm_), Y(zm_), X, fs=6, fundo=True)
+            break
+    hor = [b for b in bx if not _eh_ripa(b['it']) and (b['u1'] - b['u0']) >= 0.4 * (u1 - u0)]
+    zs = [ZP, ztop_] + [v for b in hor for v in (b['z0'], b['z1'])]
+    cadeia_v(page, zs, X(u1) + 16, X(u1) + 2, Y)
+    cadeia_v(page, [ZP, ztop_], X(u0) - 16, X(u0) - 2, Y)
+
 def cotar(page, G, ox, fy, k):
+    if G['w'].get('divisoria'): return cotar_divisoria(page, G, ox, fy, k)
     X = lambda u: ox + (u - G['umin']) * k
     Y = lambda z: fy - z * k
     bx = G['boxes']
@@ -548,7 +642,7 @@ def geom_lateral(w):
         boxes.append(dict(it=it, h0=max(h0, 0), h1=h1, z0=b[2], z1=b[5]))
     faces.sort(key=lambda t: t[0])            # vista pelo lado de u maior: o mais perto por último
     hmax = max(b['h1'] for b in boxes); zmax = max(b['z1'] for b in boxes)
-    return dict(faces=faces, boxes=boxes, hmax=hmax, zmax=zmax, esp=150)
+    return dict(faces=faces, boxes=boxes, hmax=hmax, zmax=zmax, esp=150, divisoria=bool(w.get('divisoria')))
 
 def desenhar_lateral(page, L, ox, fy, k, ztop):
     X = lambda h: ox + h * k
@@ -564,6 +658,9 @@ def desenhar_lateral(page, L, ox, fy, k, ztop):
 def cotar_lateral(page, L, ox, fy, k):
     X = lambda h: ox + h * k
     Y = lambda z: fy - z * k
+    if L.get('divisoria'):   # divisória: só profundidade total e altura total
+        cadeia_h(page, [0, L['hmax']], fy + 13, fy + 2, X)
+        xr = X(L['hmax']); cadeia_v(page, [ZP, L['zmax']], xr + 14, xr + 2, Y); return
     mb = [b for b in L['boxes'] if b['it']['tipo'] == 'mod'] or L['boxes']
     inf = [b for b in mb if b['z0'] < CORTE]; sup = [b for b in mb if b['z1'] > CORTE]
     if inf: cadeia_h(page, [0] + [v for b in inf for v in (b['h0'], b['h1'])], fy + 13, fy + 2, X)
@@ -1201,7 +1298,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         for lo_, hi_ in sorted(_cob):
             lo_ = max(lo_, _fim)
             if hi_ > lo_: _tot += hi_ - lo_; _fim = hi_
-        if not _ilha and _tot < 0.5 * (U[axl + 3] - U[axl]):   # REGRA: parede real cobre < metade dos móveis -> parede de fundo de referência
+        if not _ilha and not w0.get('divisoria') and _tot < 0.5 * (U[axl + 3] - U[axl]):   # REGRA: parede real cobre < metade dos móveis -> parede de fundo de referência
             bf = [0.0] * 6; bf[axl] = U[axl] - 400; bf[axl + 3] = U[axl + 3] + 400; bf[2] = 0; bf[5] = U[5] + 150
             pl0 = w0['plano']; bf[axd], bf[axd + 3] = (pl0, pl0 + 100) if sg > 0 else (pl0 - 100, pl0)
             for fc in caixa_faces(bf): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
@@ -1267,10 +1364,13 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         sh.commit()
         if ctx: page.show_pdf_page(rect, _tmp, 0, clip=rect)
     if letra:
-        _bal = []
+        _bal = []; _ja_bal = set()
         for i in its:
             nb = i.get('num_' + letra)
             if not nb or id(i) in kw.get('sem_balao', ()): continue
+            if PW.get(i.get('parede'), {}).get('divisoria'):   # REGRA (v18): divisória = UM balão por tipo de peça
+                if nb in _ja_bal: continue
+                _ja_bal.add(nb)
             b = i['bb']; fi = FV[PW[i['parede']]['key']]; axi = 0 if fi[0] else 1
             c3 = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2]
             c3[axi] = b[axi] if (fi[axi] > 0) != bool(kw.get('costas')) else b[axi + 3]
@@ -1545,7 +1645,7 @@ for v in V:
         ox = cx0 + (cw - Wm[j] * k) / 2 + (G['umin'] - G['vmin']) * k
         desenhar(p, G, ox, fy, k)
         cotar(p, G, ox, fy, k)
-        lab = f"VISTA {v['letras'][j]} - ESC. 1:{S:g}"
+        lab = (f"DIVISÓRIA RIPADA - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][j]} - ESC. 1:{S:g}")
         p.insert_text((cx0 + cw / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
         if j: p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
     if LT:
@@ -1553,10 +1653,48 @@ for v in V:
         oxl = cx0 + (cwl - (LT['hmax'] + LT['esp'] + 60) * k) / 2 + LT['esp'] * k
         desenhar_lateral(p, LT, oxl, fy, k, GS[0]['ztop'])
         cotar_lateral(p, LT, oxl, fy, k)
-        lab = f"VISTA {v['letras'][0]} - LATERAL - ESC. 1:{S:g}"
+        lab = (f"DIVISÓRIA RIPADA - LATERAL - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][0]} - LATERAL - ESC. 1:{S:g}")
         p.insert_text((cx0 + cwl / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
         p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
 
+
+# REGRA (v18, PDF da Priscila): DIVISOR DE GAVETA (joias) = prancha própria: listagem das peças, 3D do divisor e
+# VISTA DE CIMA com as cotas de todos os vãos (largura e profundidade) + altura das peças.
+for g_ in DIVISORES:
+    n += 1; p = nova_prancha(doc, n, 'DIVISOR DE GAVETA')
+    lt_ = letras[_nl]; _nl += 1
+    chv = []
+    for i in sorted(g_, key=lambda i: i['n']):
+        if (i['desc'], i['dim']) not in chv: chv.append((i['desc'], i['dim']))
+    for i in g_: i['num_' + lt_] = chv.index((i['desc'], i['dim'])) + 1
+    yb = tabela(p, [(d, dm, '') for d, dm in chv], AREA_IN.x0, AREA_IN.y0)
+    wid_ = g_[0].get('parede') if g_[0].get('parede') in PW else paredes[0]['id']
+    for i in g_: i['parede'] = wid_
+    r3 = fz.Rect(AREA_IN.x0, yb + 12, AREA_IN.x0 + 248, AREA_IN.y1)
+    p.draw_rect(r3, color=PRETO, width=0.5)
+    render3d(p, fz.Rect(r3.x0 + 2, r3.y0 + 2, r3.x1 - 2, r3.y1 - 2), [wid_], letra=lt_, itens=g_, ang=25, elev=35, dmin=1600, margem=60)
+    x0_ = min(i['bb'][0] for i in g_); x1_ = max(i['bb'][3] for i in g_); y0_ = min(i['bb'][1] for i in g_); y1_ = max(i['bb'][4] for i in g_)
+    ra = fz.Rect(AREA_IN.x0 + 262, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1 - 20)
+    Sd, kd = next(((S_, MM / S_) for S_ in (2, 2.5, 5, 10, 15, 20) if (x1_ - x0_) * MM / S_ <= ra.width - 90 and (y1_ - y0_) * MM / S_ <= ra.height - 70), (20, MM / 20))
+    ox_ = ra.x0 + (ra.width - (x1_ - x0_) * kd) / 2; oy_ = ra.y0 + (ra.height - (y1_ - y0_) * kd) / 2
+    X_ = lambda x: ox_ + (x - x0_) * kd
+    Y_ = lambda y: oy_ + (y1_ - y) * kd
+    fcs_ = []
+    for i in g_:
+        for pi in i['pecas']:
+            b = P[pi]['bb']
+            fcs_.append((b[5], [(b[0], b[1]), (b[3], b[1]), (b[3], b[4]), (b[0], b[4])], P[pi].get('rgb', MADEIRA), [True] * 4, P[pi].get('mat'), pi))
+    fcs_.sort(key=lambda t: t[0])
+    _desenho2d(p, fcs_, lambda x, y: (X_(x), Y_(y)))
+    vx = [v for i in g_ if i['bb'][3] - i['bb'][0] < i['bb'][4] - i['bb'][1] for v in (i['bb'][0], i['bb'][3])]
+    vy = [v for i in g_ if i['bb'][3] - i['bb'][0] >= i['bb'][4] - i['bb'][1] for v in (i['bb'][1], i['bb'][4])]
+    cadeia_h(p, [x0_, x1_] + vx, Y_(y0_) + 16, Y_(y0_) + 2, X_)
+    cadeia_h(p, [x0_, x1_], Y_(y1_) - 14, Y_(y1_) - 2, X_)
+    cadeia_v(p, [y0_, y1_] + vy, X_(x1_) + 18, X_(x1_) + 2, lambda y: Y_(y))
+    cadeia_v(p, [y0_, y1_], X_(x0_) - 14, X_(x0_) - 2, lambda y: Y_(y))
+    alt_ = round(max(i['bb'][5] for i in g_) - min(i['bb'][2] for i in g_))
+    lab = f'DIVISOR - VISTA DE CIMA - ESC. 1:{Sd:g}   |   ALTURA DAS PEÇAS: {alt_} mm'
+    p.insert_text((ra.x0 + ra.width / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, AREA_IN.y1 - 6), lab, fontname='hebo', fontsize=8.5)
 
 # ===== CAPA (design fixo: quadro externo + logo + cliente + EXECUTIVO - AMBIENTE) =====
 _W, _H = doc[0].rect.width, doc[0].rect.height
@@ -1585,9 +1723,9 @@ except Exception:
     import time as _t; cfg['saida'] = os.path.splitext(cfg['saida'])[0] + _t.strftime('_%H%M%S') + '.pdf'; doc.save(cfg['saida'], garbage=3, deflate=True)
 
 # ---------------- QUALIDADE (nível 1, por script) ----------------
-esperado = 4 + len(VW) + len(V)
+esperado = 4 + len(VW) + len(V) + len(DIVISORES)
 q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (gerado por script)", '',
-     f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas",
+     f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas" + (f" + {len(DIVISORES)} divisor(es) de gaveta" if DIVISORES else '') + (f" | divisória ripada: {len(DIVISORIAS)}" if DIVISORIAS else ''),
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
 for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {VW[0]['letra']})")
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))

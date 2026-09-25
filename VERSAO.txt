@@ -1,7 +1,17 @@
-MOTOR DE CADERNOS COMPIERE - v17 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v18 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v18 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados). REGRAS ESPECIAIS (só atuam quando o projeto tem)
+ - DIVISÓRIA RIPADA (6+ ripas <= 30 x 60-200 mm, >= 500 de comprimento, na mesma faixa de profundidade): sai das paredes
+   e vira BLOCO PRÓPRIO no fim ("MÓDULOS E PAINÉIS - DIVISÓRIA RIPADA" + "MEDIDAS E ALTURAS - DIVISÓRIA RIPADA").
+   Junta as peças encostadas (bases, travessas, painel de TV, fechamento na parede). Vista pelo lado do painel.
+   Sem parede de fundo inventada. UM balão por tipo de peça. Cota: largura total + laterais, UMA ripa e UM vão de amostra,
+   altura total e alturas das partes; lateral só com profundidade e altura totais.
+ - DIVISOR DE GAVETA (4+ peças <= 18 mm, altura <= 100, até 450 mm, nos dois sentidos, encostadas, acima do piso):
+   sai da listagem da parede e ganha PRANCHA PRÓPRIA "DIVISOR DE GAVETA": tabela + 3D + VISTA DE CIMA (escala até 1:2)
+   com as cotas de todos os vãos e a altura das peças.
 
 v17 (25/09/2026) - nuvem, aguardando aprovação do João (7 projetos regerados)
  - COTAS 2D (frontal e lateral) com as MESMAS cores e TEXTURAS do 3D (madeirado com veio, mármore): chapa 1830 x 2750,

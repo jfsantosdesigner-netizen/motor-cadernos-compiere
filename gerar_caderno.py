@@ -140,16 +140,26 @@ def cor_material(nome):
     _cc[nome] = [list(rgb), best[1]] if rgb else None
     json.dump(_cc, open(_CC, 'w', encoding='utf-8'), ensure_ascii=False, indent=0)
     return rgb
-_dm = {}
+_dm = {}; _ord = {}
 for e in _ET2.parse(cfg['xml']).iter('ITEM'):
     m_ = next((g for ch in e if ch.tag != 'ITEM' for g in ch if g.tag == 'MODEL'), None)
     if m_ is None or not m_.get('REFERENCE'): continue
     try: k_ = tuple(sorted(round(float(e.get(a))) for a in ('WIDTH', 'HEIGHT', 'DEPTH')))
     except Exception: continue
     _dm.setdefault(k_, _col.Counter())[m_.get('REFERENCE')] += 1
+    if e.get('COMPONENT') == 'Y' and e.get('UNIQUEPARENTID') == '-2': _ord.setdefault(k_, []).append(m_.get('REFERENCE'))
+# Peças soltas de MESMA medida e cores diferentes (ex.: 2 tamponamentos 2350x18x70, um Preto e um Chumbo):
+# o DXF traz as camadas na ordem inversa do XML -> casa pela ordem.
+_fixa = {}; _gp = {}
+for p_ in P: _gp.setdefault(tuple(sorted(round(x) for x in p_['dim'])), []).append(p_)
+for k_, refs_ in _ord.items():
+    g_ = _gp.get(k_, [])
+    if len(set(refs_)) > 1 and len(g_) == len(refs_):
+        for p_, r_ in zip(sorted(g_, key=lambda t: t['i']), reversed(refs_)): _fixa[p_['i']] = r_
 _nc = 0; _usadas = _col.Counter()
 for p_ in P:
     k_ = tuple(sorted(round(x) for x in p_['dim'])); c_ = _dm.get(k_)
+    if p_['i'] in _fixa: c_ = _col.Counter({_fixa[p_['i']]: 1})
     if not c_:
         for dd in ((1, 0, 0), (0, 1, 0), (0, 0, 1), (-1, 0, 0), (0, -1, 0), (0, 0, -1)):
             c_ = _dm.get(tuple(sorted(a + b for a, b in zip(k_, dd))))
@@ -235,7 +245,14 @@ def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
 def _tick(sh, x, y):
     sh.draw_line((x - 2.2, y + 2.2), (x + 2.2, y - 2.2))
 
-def cadeia_h(page, us, yl, yobj, X, fs=6.5):
+def _txt(page, pos, s, fs, rotate=0, fundo=False):
+    if fundo:
+        tw = fz.get_text_length(s, 'helv', fs)
+        r = fz.Rect(pos[0] - 0.8, pos[1] - fs * 0.8, pos[0] + tw + 0.8, pos[1] + 1) if not rotate else fz.Rect(pos[0] - fs * 0.8, pos[1] - tw - 0.8, pos[0] + 1, pos[1] + 0.8)
+        page.draw_rect(r, color=None, fill=(1, 1, 1))
+    page.insert_text(pos, s, fontname='helv', fontsize=fs, rotate=rotate)
+
+def cadeia_h(page, us, yl, yobj, X, fs=6.5, fundo=False):
     us = _uniq(us)
     if len(us) < 2: return
     sh = page.new_shape()
@@ -246,9 +263,9 @@ def cadeia_h(page, us, yl, yobj, X, fs=6.5):
     sh.finish(color=CR, width=0.6); sh.commit()
     for a, b in zip(us, us[1:]):
         s = fmt(b - a); tw = fz.get_text_length(s, 'helv', fs)
-        page.insert_text(((X(a) + X(b)) / 2 - tw / 2, yl - 1.8), s, fontname='helv', fontsize=fs)
+        _txt(page, ((X(a) + X(b)) / 2 - tw / 2, yl - 1.8), s, fs, fundo=fundo)
 
-def cadeia_v(page, zs, xl, xobj, Y, fs=6.5, esquerda=True):
+def cadeia_v(page, zs, xl, xobj, Y, fs=6.5, esquerda=True, fundo=False):
     zs = _uniq(zs)
     if len(zs) < 2: return
     sh = page.new_shape()
@@ -260,7 +277,7 @@ def cadeia_v(page, zs, xl, xobj, Y, fs=6.5, esquerda=True):
     sh.finish(color=CR, width=0.6); sh.commit()
     for a, b in zip(zs, zs[1:]):
         s = fmt(b - a); tw = fz.get_text_length(s, 'helv', fs)
-        page.insert_text((xl - 1.8, (Y(a) + Y(b)) / 2 + tw / 2), s, fontname='helv', fontsize=fs, rotate=90)
+        _txt(page, (xl - 1.8, (Y(a) + Y(b)) / 2 + tw / 2), s, fs, rotate=90, fundo=fundo)
 
 def _uniq(vals, tol=2.0):
     out = []
@@ -293,19 +310,30 @@ def cotar(page, G, ox, fy, k):
     cadeia_v(page, [0] + [v for b in dir_ for v in (b['z0'], b['z1'])], xr + 14, xr + 2, Y)
     cadeia_v(page, [0] + [v for b in esq for v in (b['z0'], b['z1'])], xl - 14, xl - 2, Y)
     cadeia_v(page, [0, max(b['z1'] for b in mb)], xl - 28, xl - 2, Y)
-    # cotas internas: altura das prateleiras de cada módulo
+    # REGRA (João): cotas INTERNAS dentro do móvel, vão por vão.
+    #  - horizontal: largura livre entre lateral/divisória/divisória/lateral
+    #  - vertical: altura livre entre prateleiras (de uma prateleira à outra, onde entram gavetas etc.)
+    f_ = G['f']
+    prof = lambda bb: (bb[3] - bb[0]) if f_[0] else (bb[4] - bb[1])
     for b in bx:
         it = b['it']
         if it['tipo'] != 'mod' or b['z1'] - b['z0'] < 350: continue
-        largura = b['u1'] - b['u0']; niveis = []
+        vert, hor = [], []
         for pi in it['pecas']:
-            p = P[pi]; bb = p['bb']
-            if p['dim'][2] > 26: continue
-            if not (b['z0'] + 30 < bb[2] and bb[5] < b['z1'] - 30): continue
-            pu0, _, pu1, _ = geo.caixa_elev(bb, G['f'])
-            if pu1 - pu0 >= 0.6 * largura: niveis.append(bb[5])
-        if niveis:
-            cadeia_v(page, [b['z0']] + niveis + [b['z1']], X(b['u0'] + largura * 0.3), None, Y, fs=5.5)
+            bb = P[pi]['bb']; pu0, pz0, pu1, pz1 = geo.caixa_elev(bb, G['f'])
+            if prof(bb) < 150: continue                      # portas, frentes, tamponamentos, ferragens
+            if pu1 - pu0 <= 30 and pz1 - pz0 >= 300: vert.append((pu0, pu1))
+            elif 12 <= pz1 - pz0 <= 30 and pu1 - pu0 >= 150: hor.append((pu0, pz0, pu1, pz1))
+        vert = sorted(vert)
+        vaos = [(a[1], c[0]) for a, c in zip(vert, vert[1:]) if c[0] - a[1] > 100]
+        for cu0, cu1 in vaos:
+            larg = cu1 - cu0
+            niv = sorted((z0_, z1_) for u0_, z0_, u1_, z1_ in hor if u0_ <= cu0 + 10 and u1_ >= cu1 - 10)
+            gaps = [(a[1], c[0]) for a, c in zip(niv, niv[1:]) if c[0] - a[1] > 40]
+            xv = X(cu0 + larg * 0.5)
+            for g0, g1 in gaps: cadeia_v(page, [g0, g1], xv, None, Y, fs=5.5, fundo=True)
+            zt = (gaps[-1][1] if gaps else b['z1']) - 70
+            cadeia_h(page, [cu0, cu1], Y(zt), Y(zt), X, fs=5.5, fundo=True)
 
 # ---------------- pranchas ----------------
 lay = fz.open(cfg['layout'])
@@ -592,6 +620,8 @@ def geom_parede(w):
     for it in w['itens']:
         cor = MADEIRA if it['tipo'] == 'comp' else BRANCO
         for pi in it['pecas']:
+            sd_ = sorted(P[pi]['dim'])
+            if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: só MDF (sem dobradiças/suportes/cabideiros)
             for uq, nv, ft in P[pi]['fq']:
                 faces.append((dep(uq), [(uu(v[0], v[1], f), v[2]) for v in uq], P[pi].get('rgb', cor), ft))
         u0, z0, u1, z1 = geo.caixa_elev(it['bb'], f)
@@ -690,6 +720,8 @@ def render3d(page, rect, pids, letra=None, **kw):
     src = []; shell = []
     for p_ in P:
         b = p_['bb']
+        sd_ = sorted(p_['dim'])
+        if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: 3D só com MDF (chapas); suportes, dobradiças, cabideiros, pés = fora
         if all(b[k] >= E[k] for k in range(3)) and all(b[k + 3] <= E[k + 3] for k in range(3)):
             base = p_.get('rgb') or cor.get(p_['i'], (0.80, 0.80, 0.83))
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))

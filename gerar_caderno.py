@@ -172,6 +172,16 @@ for nm_, q_ in _usadas.most_common(): print('   %-22s %4d pecas <- %s' % (nm_, q
 for nm_ in [k for k, v in _cc.items() if not v]: print('   SEM TEXTURA:', nm_)
 inst = geo.casar(P, linhas, None if cfg.get('listagem_pdf') else QT)
 paredes = geo.definir_paredes(inst, P)
+# AMBIENTE (referência, NUNCA cotado): peças do DXF que não são móvel do XML nem parede/piso.
+# Hoje: PEDRA / bancada / rodabanca = placa horizontal (15–100 mm) na altura da bancada (700–1100 mm).
+# Desenhada com as faces reais do DXF (pedra em L sai em L).
+_usadas = {pi for i in inst for pi in i['pecas']}
+PEDRA_COR = (0.16, 0.16, 0.17)
+AMB = [p_ for p_ in P if p_['i'] not in _usadas and p_['faces'] and 15 <= p_['dim'][2] <= 100
+       and max(p_['dim'][0], p_['dim'][1]) >= 500 and min(p_['dim'][0], p_['dim'][1]) >= 250 and 700 <= p_['bb'][2] <= 1100]
+AMB_I = {p_['i'] for p_ in AMB}
+for p_ in AMB: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
+print('AMBIENTE (pedra):', len(AMB), 'peças')
 PW = {w['id']: w for w in paredes}
 grupos = geo.agrupar_vistas2(paredes)
 nao_achados = [(d, dm) for n, (d, dm) in enumerate(linhas, 1) if not any(i['n'] == n for i in inst)]
@@ -672,6 +682,11 @@ def geom_parede(w):
         u0_ = max(u0_, umin_ - 150); u1_ = min(u1_, umax_ + 150); z1_ = min(z1_, zmax_ + 100)
         if u1_ - u0_ < 5: continue
         wf.append((1e9, [(u0_, 0), (u1_, 0), (u1_, z1_), (u0_, z1_)], (0.9, 0.9, 0.9), [True] * 4))
+    for p_ in AMB:   # pedra/bancada: só referência no 2D (não entra em boxes -> não é cotada)
+        b = p_['bb']; u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
+        if u1_ < umin_ - 50 or u0_ > umax_ + 50: continue
+        for fc in p_['faces']:
+            faces.append((dep(fc), [(uu(v[0], v[1], f), v[2]) for v in fc], PEDRA_COR, [False] * len(fc)))
     faces.sort(key=lambda t: -t[0]); faces = wf + faces
     return dict(w=w, f=f, faces=faces, boxes=boxes, umin=min(b['u0'] for b in boxes), umax=max(b['u1'] for b in boxes), zmax=max(b['z1'] for b in boxes))
 
@@ -763,6 +778,11 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, **kw
     for p_ in P:
         b = p_['bb']
         sd_ = sorted(p_['dim'])
+        if p_['i'] in AMB_I:
+            if all(b[k] <= E[k + 3] and b[k + 3] >= E[k] for k in range(3)):
+                for fc in p_['faces']: src.append((fc, PEDRA_COR, [False] * len(fc), 1, len(shell)))
+                shell.append(b)
+            continue
         if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: 3D só com MDF (chapas); suportes, dobradiças, cabideiros, pés = fora
         if all(b[k] >= E[k] for k in range(3)) and all(b[k + 3] <= E[k + 3] for k in range(3)):
             base = p_.get('rgb') or cor.get(p_['i'], (0.80, 0.80, 0.83))

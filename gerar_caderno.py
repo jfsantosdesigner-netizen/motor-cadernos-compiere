@@ -788,26 +788,81 @@ n += 1; p = nova_prancha(doc, n, 'PLANTA - ESPECIFICAÇÕES DO PROJETO')
 esp = fz.Rect(AREA_IN.x0, AREA_IN.y0, AREA_IN.x0 + 225, AREA_IN.y1)
 p.draw_rect(esp, color=PRETO, width=0.6)
 confere = cfg.get('xml_confere', True)
-val = lambda k: ', '.join(cores.get(k, {})) if confere and cores.get(k) else 'CONFERIR'
-esp_caixa = sorted(round(min(P[i]['dim'])) for it in inst if it['tipo'] == 'mod' for i in it['pecas'] if 15 <= min(P[i]['dim']) <= 30 and P[i]['dim'][2] > 300)
-esp_c = max(set(esp_caixa), key=esp_caixa.count) if esp_caixa else 18
-esp_t = sorted({round(min(P[it['pecas'][0]]['dim'])) for it in inst if it['tipo'] == 'comp'})
-itens_esp = [('ESPECIFICAÇÕES DO PROJETO', None), ('CORES E ACABAMENTOS:', None),
-             ('Caixa Módulos (Interno)', val('caixa')), ('Portas e Frentes', val('porta')),
-             ('Tamponamentos / Painéis', val('tamp')),
-             ('FERRAGENS E ACESSÓRIOS:', None), ('Dobradiças', _pega(r'dobradi')), ('Corrediças', _pega(r'corredi')), ('Puxadores', _pega(r'puxador')), ('Portas Alumínio / Vidros / Espelhos', _pega(r'alum[ií]nio|vidro|espelho')),
-             ('ESPESSURAS (medidas do DXF):', None), ('Caixa Módulos', f'{esp_c}mm'),
-             ('Tamponamentos / Painéis', ' e '.join(f'{e}mm' for e in esp_t) or 'CONFERIR')]
+# REGRA (João): especificações no modelo fixo, preenchidas com o que está no XML (nome exato). Sem item no projeto = em branco.
+def _espec(xml):
+    lim = lambda t: re.sub(r'[^\w)\]]+$', '', re.sub(r'\s+', ' ', t or '')).strip()
+    root_ = ET.parse(xml).getroot()
+    cor_, esp_ = {}, {}
+    def add(cl, c, e):
+        cor_.setdefault(cl, _col.Counter())[c] += 1
+        esp_.setdefault(cl, set()).add(e)
+    for it in root_.iter('ITEM'):
+        its_ = it.find('ITEMS')
+        if its_ is None: continue
+        ch = [c for c in its_.findall('ITEM') if re.match(r'Chapa .+ Espessura', c.get('DESCRIPTION', ''))]
+        if not ch: continue
+        m_ = re.match(r'Chapa (.+?) Espessura ([\d.,]+)\s*mm', ch[0].get('DESCRIPTION'))
+        if not m_: continue
+        c, e = m_.group(1).strip(), fmt(float(m_.group(2).replace(',', '.')))
+        I, D = (it.get('ID') or '').lower(), (it.get('DESCRIPTION') or '')
+        if re.search(r'(^|_)por_', I): add('porta', c, e)
+        elif '_gav' in I: continue                                   # corpo da gaveta
+        elif re.search(r'tamponamento', D, re.I): add('tamp', c, e)
+        elif re.search(r'afastador', D, re.I): add('caixa', c, e)
+        elif re.search(r'painel|tampo', D, re.I) or re.search(r'(^|_)(tam|tampo)(_|$)', I): add('painel', c, e)
+        elif '_pra' in I or re.match(r'prat', D, re.I): add('prat', c, e)
+        elif '_fun' in I: esp_.setdefault('fundo', set()).add(e)
+        else: add('caixa', c, e)
+    todos_ = [(it.get('DESCRIPTION') or '', it) for it in root_.iter('ITEM')]
+    nomes = lambda rx: list(OrderedDict((lim(d), 1) for d, _ in todos_ if re.search(rx, d, re.I)))
+    pux_n, pux_c = [], []
+    for d, it in todos_:
+        if re.match(r'puxador', d, re.I):
+            rf = {g.tag: g.get('REFERENCE') for g in (it.find('REFERENCES') or [])}
+            n_ = lim(d); lg = rf.get('LARGURA')
+            if lg and lg + 'mm' not in n_: n_ += f' - {lg}mm'
+            if n_ not in pux_n: pux_n.append(n_)
+            a_ = lim(rf.get('DESC_ACA_PER', ''))
+            if a_ and a_ not in pux_c: pux_c.append(a_)
+    esp_nome = lambda d: re.sub(r'\s*[\d.,]+\s*mm$', '', d).strip()
+    especiais = list(OrderedDict((esp_nome(lim(d)), 1) for d, it in todos_ if it.get('COMPONENT') == 'Y' and re.search(r'pist|articulad|aventos|basculant|trilho|cabideiro tubo|lixeira|cesto|porta.?tempero|sapateira|calceiro|gaveteiro aramado', d, re.I)))
+    cor = lambda k: ', '.join(c for c, _ in cor_.get(k, _col.Counter()).most_common())
+    mm = lambda k: ' e '.join(f'{e}mm' for e in sorted(esp_.get(k, ()), key=lambda t: float(t.replace(',', '.'))))
+    cx = mm('caixa') + (f" (fundo {mm('fundo')})" if esp_.get('fundo') else '')
+    return [('ESPECIFICAÇÕES DO PROJETO', None), ('CORES E ACABAMENTOS:', None),
+            ('Caixa Módulos (Interno)', cor('caixa')), ('Portas e Frentes', cor('porta')), ('Tamponamentos', cor('tamp')),
+            ('Painéis e Tampos', cor('painel')), ('Puxadores', ', '.join(pux_c)), ('Portas de Vidro', ', '.join(nomes(r'vidro|espelho'))),
+            ('FERRAGENS E ACESSÓRIOS:', None),
+            ('Dobradiças', ', '.join(nomes(r'^dobradi'))), ('Corrediças', ', '.join(nomes(r'corredi'))),
+            ('Puxadores', ', '.join(pux_n)), ('Ferragens especiais', ', '.join(especiais)),
+            ('ESPESSURAS:', None),
+            ('Caixa Módulos (Interno)', cx), ('Prateleiras internas', mm('prat')), ('Portas e Frentes', mm('porta')),
+            ('Tamponamentos', mm('tamp')), ('Painéis e Tampos e perfil', mm('painel'))]
+itens_esp = _espec(cfg['xml'])
+if not confere:
+    itens_esp = [(r_, v_ if v_ is None or 'mm' in v_ else 'CONFERIR') for r_, v_ in itens_esp]
+_FH, _FB = fz.Font('helv'), fz.Font('hebo')
+def _quebra(t, larg, fs):
+    ls, cur = [], ''
+    for w_ in t.split(' '):
+        tt = (cur + ' ' + w_).strip()
+        if cur and _FB.text_length(tt, fs) > larg: ls.append(cur); cur = w_
+        else: cur = tt
+    return ls + ([cur] if cur else [])
 y = esp.y0 + 14
 for rot, v in itens_esp:
     if v is None:
+        if y > esp.y0 + 20: y += 4
         p.insert_text((esp.x0 + 6, y), rot, fontname='hebo', fontsize=8.5, color=RED if y == esp.y0 + 14 else PRETO)
-    else:
-        p.insert_text((esp.x0 + 6, y), rot + ':', fontname='helv', fontsize=7.5)
-        vv = v if len(v) < 42 else v[:40] + '…'
-        p.insert_text((esp.x0 + 12, y + 10), vv, fontname='hebo', fontsize=7.5, color=(0.7, 0, 0) if v == 'CONFERIR' else PRETO)
-        y += 10
-    y += 15
+        y += 14; continue
+    rt = rot + ': '; rw = _FH.text_length(rt, 7.3) + 1.5
+    p.insert_text((esp.x0 + 6, y), rt, fontname='helv', fontsize=7.3)
+    ls = _quebra(v, esp.width - 12 - rw, 7.3) if v else []
+    if len(ls) > 1: ls = _quebra(v, esp.width - 18, 7.3); y += 9.5; x_ = esp.x0 + 12
+    else: x_ = esp.x0 + 6 + rw
+    for l_ in ls:
+        p.insert_text((x_, y), l_, fontname='hebo', fontsize=7.3, color=(0.7, 0, 0) if v == 'CONFERIR' else PRETO); y += 9.5
+    y += 3.5 if ls else 13
 if not confere:
     p.insert_text((esp.x0 + 6, esp.y1 - 8), 'XML da pasta é de outra versão: exportar o atual', fontname='helv', fontsize=6.5, color=(0.7, 0, 0))
 # planta

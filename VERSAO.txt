@@ -1,5 +1,2 @@
 MOTOR DE CADERNOS COMPIERE - v10 (25/09/2026)
-v10: 3D desenhado por peca (ferragens/cabideiros atras das portas nao aparecem mais) + cores pela tabela materiais_cores.json (dispensa a pasta MATERIAIS)
-v9: pasta renomeada para 'motor v9' + caminhos (padrao.json, config_*.json) atualizados
-v8: cores reais (XML -> pasta MATERIAIS) + capa nova (logo trocavel em padrao.json)
-v7: listagem 3D frontal portas fechadas c/ paredes | cotas 2D frontal portas abertas | ferragens so na P03 | imagens limpas | escala min 1:25
+v10: 3D e 2D so com MDF (sem ferragens/suportes/cabideiros) | 3D desenhado por peca (nada atravessa portas/rodape) | cor de pecas de mesma medida casada pela ordem XML x DXF | COTAS INTERNAS: largura livre de cada vao + altura livre entre prateleiras | PRANCHA 03 no modelo do Joao: cores, ferragens (nome exato do XML) e espessuras por tipo de peca, vazio quando nao tem

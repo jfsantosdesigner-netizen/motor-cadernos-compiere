@@ -1,0 +1,19 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "RAFAEL CLARET",
+  "ambiente": "Cozinha 2",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "assets/LAYOUT_FIXO.pdf",
+ "contrato_fonte": "assets/CONTRATO.pdf",
+ "logo": "assets/LOGO.png",
+ "xml": "exemplos/COZINHA2_v2/EXECUTIVO COZINHA - 10000334.xml",
+ "xml_confere": true,
+ "dxf": "exemplos/COZINHA2_v2/COZINHA.dxf",
+ "pecas_json": "exemplos/COZINHA2_v2/_pecas_dxf.json",
+ "vistas": [],
+ "materiais": "MATERIAIS",
+ "saida": "exemplos/COZINHA2_v2/CADERNO - COZINHA 2.pdf"
+}

@@ -307,6 +307,8 @@ def _uniq(vals, tol=2.0):
         if not out or v - out[-1] > tol: out.append(v)
     return out
 
+# nível do piso pronto: placa de piso do DXF (grande, fina, no chão). Cotas de altura partem daqui.
+ZP = max([p_['bb'][5] for p_ in P if min(p_['dim'][0], p_['dim'][1]) > 1500 and p_['dim'][2] <= 60 and p_['bb'][2] <= 1] or [0])
 CORTE = 1100
 def cotar(page, G, ox, fy, k):
     X = lambda u: ox + (u - G['umin']) * k
@@ -329,9 +331,9 @@ def cotar(page, G, ox, fy, k):
     xr, xl = X(G['umax']), X(G['umin'])
     dir_ = [b for b in mb if b['u1'] >= G['umax'] - 700]
     esq = [b for b in mb if b['u0'] <= G['umin'] + 700]
-    cadeia_v(page, [0] + [v for b in dir_ for v in (b['z0'], b['z1'])], xr + 14, xr + 2, Y)
-    cadeia_v(page, [0] + [v for b in esq for v in (b['z0'], b['z1'])], xl - 14, xl - 2, Y)
-    cadeia_v(page, [0, max(b['z1'] for b in mb)], xl - 28, xl - 2, Y)
+    cadeia_v(page, [ZP] + [v for b in dir_ for v in (b['z0'], b['z1'])], xr + 14, xr + 2, Y)
+    cadeia_v(page, [ZP] + [v for b in esq for v in (b['z0'], b['z1'])], xl - 14, xl - 2, Y)
+    cadeia_v(page, [ZP, max(b['z1'] for b in mb)], xl - 28, xl - 2, Y)
     # REGRA (João): cotas INTERNAS dentro do móvel, vão por vão.
     #  - horizontal: largura livre entre lateral/divisória/divisória/lateral
     #  - vertical: altura livre entre prateleiras (de uma prateleira à outra, onde entram gavetas etc.)

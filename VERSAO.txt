@@ -1,6 +1,6 @@
 MOTOR DE CADERNOS COMPIERE - v11 (25/09/2026)
 
-REGRA: cada rodada de correções = nova versão (VERSAO.txt + tag no GitHub). Versões antigas ficam guardadas (tags vN).
+REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
 
 v11 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC

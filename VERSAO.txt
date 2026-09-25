@@ -1,7 +1,14 @@
-MOTOR DE CADERNOS COMPIERE - v21 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v22 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v22 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
+ - CONDIÇÃO "PERNA DO L" (planta do João): todo trecho com móvel tem VISTA. Peças de uma parede que vão > 300 mm além da
+   frente dos módulos, num trecho de 600 mm+ (ex.: penteadeira em L), viram vista própria, olhada pelo lado de dentro do L,
+   e vêm logo DEPOIS da vista da parede delas (letras em sequência)
+ - CONDIÇÃO "RODAPÉ / BASE ESCONDIDA": 3+ peças até 150 mm do piso com uma no sentido da profundidade (quadro de base
+   embaixo do móvel) -> DETALHE "RODAPÉ / BASE" embaixo da tabela (3D de cima em diagonal), balões só lá
 
 v21 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
  PRINCÍPIO (João): o motor é REGRAS + CONDIÇÕES. Nada do que está certo é apagado; cada situação nova vira uma condição nova.

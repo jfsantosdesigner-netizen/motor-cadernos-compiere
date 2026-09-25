@@ -373,6 +373,30 @@ for d in DIVISORIAS:   # parede "virtual" da divisória: vista pelo lado do pain
     w = dict(key=key, plano=pl, itens=its, id=f"DIVISORIA@{round(pl)}", divisoria=True)
     for i in its: i['parede'] = w['id']
     paredes.append(w); d['parede'] = w['id']
+# 4) CONDIÇÃO (v22, planta do João): PERNA DO L dentro de uma parede (ex.: penteadeira em L) = VISTA PRÓPRIA.
+#    Peças soltas da parede que vão bem mais fundo que os módulos (> 300 mm além da frente deles), formando um trecho de
+#    600 mm+ na profundidade, viram outra "parede" vista de lado (pelo lado de dentro do L).
+_novas = []
+for w in [w for w in paredes if not w.get('divisoria')]:
+    f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
+    prof_ = lambda bb: max((w['plano'] - bb[ad]) * sg_, (w['plano'] - bb[ad + 3]) * sg_)
+    mods_ = [i for i in w['itens'] if i['tipo'] == 'mod']
+    if not mods_: continue
+    D_ = max(prof_(m['bb']) for m in mods_)
+    perna = [i for i in w['itens'] if i['tipo'] == 'comp' and prof_(i['bb']) > D_ + 300]
+    if len(perna) < 2: continue
+    p0 = min(min((w['plano'] - i['bb'][ad]) * sg_, (w['plano'] - i['bb'][ad + 3]) * sg_) for i in perna)
+    if max(prof_(i['bb']) for i in perna) - max(p0, D_) < 600: continue
+    c_perna = sum((i['bb'][al] + i['bb'][al + 3]) / 2 for i in perna) / len(perna)
+    c_main = sum((i['bb'][al] + i['bb'][al + 3]) / 2 for i in mods_) / len(mods_)
+    maior = c_perna > c_main       # câmera olha do lado de dentro do L (onde está o resto do móvel)
+    key = ('x+' if maior else 'x-') if al == 0 else ('y+' if maior else 'y-')
+    pl = max(i['bb'][al + 3] for i in perna) if maior else min(i['bb'][al] for i in perna)
+    w['itens'] = [i for i in w['itens'] if i not in perna]
+    nw = dict(key=key, plano=pl, itens=perna, id=f"{key}@{round(pl)}L", perna_l=True, pai=w['id'])
+    for i in perna: i['parede'] = nw['id']
+    _novas.append(nw)
+paredes += _novas
 PW = {w['id']: w for w in paredes}
 grupos = geo.agrupar_vistas2([w for w in paredes if not w.get('divisoria')])
 _DIVW = [w['id'] for w in paredes if w.get('divisoria')]
@@ -404,6 +428,16 @@ for g in livres:
         V.append(dict(letra=ls[0], letras=ls, img3d=None, paredes=b))
 for wid in _DIVW:   # REGRA (v18): divisória ripada = bloco próprio no fim
     V.append(dict(letra=letras[_nl], letras=[letras[_nl]], img3d=None, paredes=[wid], divisoria=True)); _nl += 1
+# REGRA (v22, planta do João): a vista da PERNA DO L vem logo DEPOIS da vista da parede dela (b -> c); letras em sequência
+for v in [v for v in V if len(v['paredes']) == 1 and PW[v['paredes'][0]].get('perna_l')]:
+    pai_ = PW[v['paredes'][0]]['pai']; V.remove(v)
+    k_ = next((j for j, o in enumerate(V) if pai_ in o['paredes']), len(V) - 1)
+    V.insert(k_ + 1, v)
+_c = 0
+for v in V:
+    if v.get('img3d') is None and not v.get('ref'):
+        v['letras'] = [letras[_c + k] for k in range(len(v['paredes']))]; v['letra'] = v['letras'][0]
+    _c += len(v['paredes'])
 for v in V:
     v.setdefault('letras', [v['letra'] + (str(j + 1) if len(v['paredes']) > 1 else '') for j in range(len(v['paredes']))])
     v['titulo'] = 'VISTA ' + v['letras'][0] if len(v['letras']) == 1 else 'VISTAS ' + ' E '.join(v['letras'])
@@ -1244,6 +1278,16 @@ def costas_paineis(w):
                 out.append(i)
     return out
 
+# CONDIÇÃO (v22, João): RODAPÉ/BASE ESCONDIDA embaixo do móvel (3+ peças até 150 mm do piso, com pelo menos uma
+# no sentido da profundidade = quadro de base) -> DETALHE "RODAPÉ / BASE" embaixo da tabela, balões só lá.
+def rodapes(w):
+    if w.get('divisoria'): return []
+    f_ = FV[w['key']]; ad = 0 if f_[0] else 1
+    rs = [i for i in w['itens'] if i['tipo'] == 'comp' and i['bb'][2] <= 20 and i['bb'][5] <= 150]
+    if len(rs) < 3: return []
+    if not any((i['bb'][ad + 3] - i['bb'][ad]) > 150 for i in rs): return []
+    return rs
+
 def tem_porta(m, w):
     # porta/frente/basculante = chapa fina (<= 30 mm na profundidade) na FRENTE do módulo cobrindo >= 40% da face frontal
     f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
@@ -1685,9 +1729,10 @@ for v in V:
         # ganha um detalhe visto de trás; balão dele só nesse detalhe.
         cts = [(w, c + [o for o in costas_paineis(PW[w]) if o not in c], 'costas') for w in s_['paredes'] for c in [costas(PW[w])] if c or costas_paineis(PW[w])]
         mps = [(w, t_) for w in s_['paredes'] for t_ in pequenos(PW[w])]
+        rds = [(w, r_) for w in s_['paredes'] for r_ in [rodapes(PW[w])] if r_]
         render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'], contexto=True,
-                 sem_balao={id(i) for _, c in nis for i in c} | {id(i) for _, c, _ in cts for i in c} | {id(i) for _, t_ in mps for i in t_['todos']})
-        nis = [(w, c, 'nicho') for w, c in nis] + cts + [(w, t_['mostra'], 'modulo') for w, t_ in mps]
+                 sem_balao={id(i) for _, c in nis for i in c} | {id(i) for _, c, _ in cts for i in c} | {id(i) for _, t_ in mps for i in t_['todos']} | {id(i) for _, r_ in rds for i in r_})
+        nis = [(w, c, 'nicho') for w, c in nis] + cts + [(w, t_['mostra'], 'modulo') for w, t_ in mps] + [(w, r_, 'rodape') for w, r_ in rds]
         if nis:
             y0_ = (yb + 18 if not (nao_achados and s_ is VW[0]) else yb + 24)
             # quadro com o FORMATO do detalhe (nicho largo = quadro largo e baixo); largos ocupam a linha inteira
@@ -1707,8 +1752,11 @@ for v in V:
                 yy += h2
             for (w, c, tp_, _a), r_ in quadros:
                 p.draw_rect(r_, color=PRETO, width=0.5)
-                _tit = 'DETALHE - NICHO' if tp_ == 'nicho' else 'DETALHE - COSTAS' if tp_ == 'costas' else ('DETALHE - ' + c[0]['desc'].upper())[:44]
+                _tit = 'DETALHE - NICHO' if tp_ == 'nicho' else 'DETALHE - COSTAS' if tp_ == 'costas' else 'DETALHE - RODAPÉ / BASE' if tp_ == 'rodape' else ('DETALHE - ' + c[0]['desc'].upper())[:44]
                 p.insert_text((r_.x0 + 4, r_.y0 + 10), _tit, fontname='hebo', fontsize=7.5, color=RED)
+                if tp_ == 'rodape':   # base/rodapé sozinho visto de cima em diagonal (como o PDF do João)
+                    render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=c, ang=28, elev=38, dmin=2600, margem=60, isolado=True)
+                    continue
                 if tp_ == 'modulo':   # módulo pequeno sozinho, em diagonal leve, balões só dele
                     render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=c, ang=25, elev=18, dmin=2000, margem=60, isolado=True)
                     continue
@@ -1843,8 +1891,10 @@ for v in VW:
     _ex = []
     for w_ in v['paredes']:
         if pequenos(PW[w_]): _ex.append(f"{len(pequenos(PW[w_]))} detalhe(s) de módulo pequeno")
+        if rodapes(PW[w_]): _ex.append(f"rodapé/base ({len(rodapes(PW[w_]))} peças) em detalhe")
+        if PW[w_].get('perna_l'): _ex.append("perna do L com vista própria")
         if costas_paineis(PW[w_]): _ex.append(f"{len(costas_paineis(PW[w_]))} peça(s) atrás de painel no detalhe das costas")
-    q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem" + (' | LISTAGEM POLUÍDA -> ' + ', '.join(_ex) if _ex else ''))
+    q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem" + (' | CONDIÇÕES -> ' + ', '.join(_ex) if _ex else ''))
 q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in VW for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
 open(os.path.splitext(cfg['saida'])[0] + '_QUALIDADE.md', 'w', encoding='utf-8').write('\n'.join(q))
 print('\n'.join(q))

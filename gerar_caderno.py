@@ -919,6 +919,32 @@ def costas(w):
         if tapa: out.append(i)
     return out
 
+def suspensos(w):
+    # REGRA (João): NICHO SUSPENSO = módulo alto (base >= 1,40 m) sem móvel embaixo em >= 70% da largura
+    # (ex.: armário em cima da geladeira) + tamponamentos/painéis encostados nele -> vira DETALHE.
+    f_ = FV[w['key']]; al = 1 if f_[0] else 0; out = []; ja = set()
+    for g in nichos(w):
+        for i in g: ja.add(id(i))
+    for m in w['itens']:
+        if m['tipo'] != 'mod' or m['bb'][2] < 1400 or id(m) in ja: continue
+        a0, a1 = m['bb'][al], m['bb'][al + 3]; iv = []
+        for o in w['itens']:
+            if o is m or o['bb'][5] > m['bb'][2] + 10: continue
+            if o['tipo'] != 'mod' and o['bb'][5] - o['bb'][2] < 300: continue   # rodapé/"Vista"/filete não contam
+            lo, hi = max(a0, o['bb'][al]), min(a1, o['bb'][al + 3])
+            if hi > lo: iv.append((lo, hi))
+        cob = 0; fim = a0
+        for lo, hi in sorted(iv):
+            lo = max(lo, fim)
+            if hi > lo: cob += hi - lo; fim = hi
+        if cob >= 0.3 * (a1 - a0): continue
+        g = [m] + [o for o in w['itens'] if o['tipo'] == 'comp' and id(o) not in ja
+                   and all(min(o['bb'][k + 3], m['bb'][k + 3]) - max(o['bb'][k], m['bb'][k]) > -5 for k in range(3))
+                   and o['bb'][al] >= a0 - 150 and o['bb'][al + 3] <= a1 + 150 and o['bb'][2] >= m['bb'][2] - 100]
+        for i in g: ja.add(id(i))
+        out.append(g)
+    return out
+
 def nichos(w):
     # REGRA (João): TODO NICHO ABERTO vira detalhe. Nicho = conjunto de painéis/tamponamentos encostados entre si
     # (peças "Vista" de acabamento não entram no agrupamento), com 3+ peças e 2+ horizontais, até 2 m de largura e 1,2 m de altura.
@@ -1247,7 +1273,7 @@ for v in V:
             p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
         # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela; continua desenhado na imagem
         # grande, mas os balões dele ficam SÓ no detalhe (imagem grande menos poluída)
-        nis = [(w, c) for w in s_['paredes'] for c in nichos(PW[w])]
+        nis = [(w, c) for w in s_['paredes'] for c in nichos(PW[w]) + suspensos(PW[w])]
         # REGRA (João): item listado que fica ESCONDIDO ATRÁS dos módulos (ex.: painel nas costas da ilha)
         # ganha um detalhe visto de trás; balão dele só nesse detalhe.
         cts = [(w, c, 'costas') for w in s_['paredes'] for c in [costas(PW[w])] if c]
@@ -1262,21 +1288,18 @@ for v in V:
                 la = max(i['bb'][ax_ + 3] for i in c) - min(i['bb'][ax_] for i in c); al = max(i['bb'][5] for i in c) - min(i['bb'][2] for i in c)
                 return max(0.25, min(1.6, al / max(la, 1)))
             itens_q = [(w, c, tp_, _asp(w, c)) for w, c, tp_ in nis]
-            linhas_q = []; lin = []
-            for it_ in itens_q:
-                if it_[3] < 0.6: linhas_q.append([it_])
-                else:
-                    lin.append(it_)
-                    if len(lin) == 2: linhas_q.append(lin); lin = []
-            if lin: linhas_q.append(lin)
-            alt = [max(248 / len(l_) * it_[3] + 18 for it_ in l_) for l_ in linhas_q]
-            fat = min(1.0, (AREA_IN.y1 - y0_) / sum(alt)); yy = y0_
-            quadros = []
-            for l_, a_ in zip(linhas_q, alt):
-                w_ = 248 / len(l_)
-                for k2, it_ in enumerate(l_):
-                    quadros.append((it_, fz.Rect(AREA_IN.x0 + k2 * w_, yy, AREA_IN.x0 + (k2 + 1) * w_ - (4 if len(l_) > 1 else 0), yy + a_ * fat - 4)))
-                yy += a_ * fat
+            disp = AREA_IN.y1 - y0_; melhor = None
+            for nl_ in range(1, len(itens_q) + 1):   # testa 1, 2, ... linhas e fica com o arranjo de quadros maiores
+                per = -(-len(itens_q) // nl_); rows = [itens_q[i0:i0 + per] for i0 in range(0, len(itens_q), per)]
+                hs = [min(disp / len(rows), 18 + (248 - 24 * len(r0)) / sum(1 / it_[3] for it_ in r0)) for r0 in rows]
+                if melhor is None or min(hs) > melhor[0]: melhor = (min(hs), rows, hs)
+            _, rows, hs = melhor; quadros = []; yy = y0_
+            for r0, h2 in zip(rows, hs):
+                xx = AREA_IN.x0
+                for it_ in r0:
+                    lg = (h2 - 18) / it_[3] + 20
+                    quadros.append((it_, fz.Rect(xx, yy, xx + lg, yy + h2 - 4))); xx += lg + 4
+                yy += h2
             for (w, c, tp_, _a), r_ in quadros:
                 p.draw_rect(r_, color=PRETO, width=0.5)
                 p.insert_text((r_.x0 + 4, r_.y0 + 10), 'DETALHE - NICHO' if tp_ == 'nicho' else 'DETALHE - COSTAS', fontname='hebo', fontsize=7.5, color=RED)

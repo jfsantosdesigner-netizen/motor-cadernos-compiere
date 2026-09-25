@@ -1,0 +1,19 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "RAFAEL CLARET",
+  "ambiente": "Área de Serviço",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "assets/LAYOUT_FIXO.pdf",
+ "contrato_fonte": "assets/CONTRATO.pdf",
+ "logo": "assets/LOGO.png",
+ "xml": "exemplos/AREA_SERVICO/EXECUTIVO - AREA DE SERVICO 100000334.xml",
+ "xml_confere": true,
+ "dxf": "exemplos/AREA_SERVICO/RafaelClaret_Lavanderia.dxf",
+ "pecas_json": "exemplos/AREA_SERVICO/_pecas_dxf.json",
+ "vistas": [],
+ "materiais": "MATERIAIS",
+ "saida": "exemplos/AREA_SERVICO/CADERNO - AREA DE SERVICO.pdf"
+}

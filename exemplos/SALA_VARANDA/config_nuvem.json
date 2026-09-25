@@ -1,0 +1,19 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "RAFAEL CLARET",
+  "ambiente": "Sala e Varanda",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "assets/LAYOUT_FIXO.pdf",
+ "contrato_fonte": "assets/CONTRATO.pdf",
+ "logo": "assets/LOGO.png",
+ "xml": "exemplos/SALA_VARANDA/EXECUTIVO SALA E VARANDA - 10000334.xml",
+ "xml_confere": true,
+ "dxf": "exemplos/SALA_VARANDA/RafaelClaret_SalaEChurrasqueira.dxf",
+ "pecas_json": "exemplos/SALA_VARANDA/_pecas_dxf.json",
+ "vistas": [],
+ "materiais": "MATERIAIS",
+ "saida": "exemplos/SALA_VARANDA/CADERNO - SALA E VARANDA.pdf"
+}

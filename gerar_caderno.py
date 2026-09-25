@@ -183,14 +183,26 @@ for cv in cfg['vistas']:
     g = next((g for g in livres if any(cv['ref'] in f"{i['desc']} {i['dim']}" for w in g for i in PW[w]['itens'])), None)
     if g: livres.remove(g); V.append(dict(cv, paredes=sorted(g, key=lambda w: -len(PW[w]['itens']))))
 letras = 'ABCDEFGHIJKL'
-# REGRA (João): UMA VISTA POR PAREDE (frontal 2D de verdade, listagem e cotas pegam todos os móveis daquela parede).
-# Ordem: segue a sequência dos grupos (paredes vizinhas juntas); dentro do grupo, a parede maior primeiro.
-# Ex.: cozinha em dois "L" -> A (parede maior), B (a perninha do L), C (outra parede maior), D (a outra perninha).
-_larg = lambda w: max(max(i['bb'][3] for i in PW[w]['itens']) - min(i['bb'][0] for i in PW[w]['itens']),
-                      max(i['bb'][4] for i in PW[w]['itens']) - min(i['bb'][1] for i in PW[w]['itens']))
+# REGRA (João): cada parede tem sua LETRA (A, B, C, D... em sequência; em cada L a parede maior primeiro).
+# Parede PEQUENA (< PAREDE_PEQ ao longo da parede) vai junto com a parede grande do mesmo L:
+#   listagem única com 3D angulado pegando as duas + cotas das duas lado a lado na mesma prancha.
+# Paredes grandes = vista própria (3D frontal).
+PAREDE_PEQ = 2500  # João: parede < 2,5 m vai junto com a vizinha do L (listagem na diagonal)
+def _larg(w):
+    ax = 1 if FV[PW[w]['key']][0] else 0
+    return max(i['bb'][ax + 3] for i in PW[w]['itens']) - min(i['bb'][ax] for i in PW[w]['itens'])
+_nl = len(V)
 for g in livres:
-    for w in sorted(g, key=lambda w: -_larg(w)):
-        V.append(dict(letra=letras[len(V)], img3d=None, paredes=[w]))
+    ws = sorted(g, key=lambda w: -_larg(w)); blocos = []
+    for w in ws:
+        if blocos and _larg(w) < PAREDE_PEQ and len(blocos[0]) < 2: blocos[0].append(w)
+        else: blocos.append([w])
+    for b in blocos:
+        ls = [letras[_nl + k] for k in range(len(b))]; _nl += len(b)
+        V.append(dict(letra=ls[0], letras=ls, img3d=None, paredes=b))
+for v in V:
+    v.setdefault('letras', [v['letra'] + (str(j + 1) if len(v['paredes']) > 1 else '') for j in range(len(v['paredes']))])
+    v['titulo'] = 'VISTA ' + v['letras'][0] if len(v['letras']) == 1 else 'VISTAS ' + ' E '.join(v['letras'])
 
 # listagem de cada vista: módulos primeiro, depois componentes; mesmo item = mesma linha
 for v in V:
@@ -705,21 +717,39 @@ def _ordem_pecas(fcs, bbs, cam):
             if grau[j] == 0 and j not in feito: heapq.heappush(hp, (-dist[j], j))
     return out
 
-def render3d(page, rect, pids, letra=None, **kw):
-    its = [i for w in pids for i in PW[w]['itens']]
+def nichos(w):
+    # nicho = conjunto de painéis (componentes) encostados entre si, pequeno (<= 1,2 m) e com 3+ peças horizontais (prateleiras)
+    cs = [i for i in w['itens'] if i['tipo'] == 'comp']; grupos_ = []
+    toca = lambda A, B: all(min(A[k + 3], B[k + 3]) - max(A[k], B[k]) > -3 for k in range(3))
+    for i in cs:
+        junto = [g for g in grupos_ if any(toca(i['bb'], j['bb']) for j in g)]
+        novo = [i] + [j for g in junto for j in g]
+        grupos_ = [g for g in grupos_ if g not in junto] + [novo]
+    out = []
+    for g in grupos_:
+        U_ = list(g[0]['bb'])
+        for i in g: U_ = geo.uniao(U_, i['bb'])
+        ext = [U_[k + 3] - U_[k] for k in range(3)]
+        hz = sum(1 for i in g if i['bb'][5] - i['bb'][2] <= 30)
+        if len(g) >= 4 and max(ext) <= 1200 and hz >= 3: out.append(g)
+    return out
+
+def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, **kw):
+    its = itens or [i for w in pids for i in PW[w]['itens']]
     U = list(its[0]['bb'])
     for i in its: U = geo.uniao(U, i['bb'])
     E = [U[0] - 80, U[1] - 80, U[2] - 80, U[3] + 80, U[4] + 80, U[5] + 80]
     f = FV[PW[pids[0]]['key']]; a = 0.0
     if len(pids) > 1:
         f2 = FV[PW[pids[1]]['key']]; a = math.radians(22 if f[0] * f2[1] - f[1] * f2[0] >= 0 else -22)
+    if ang is not None: a = math.radians(ang)
     hx = f[0] * math.cos(a) - f[1] * math.sin(a); hy = f[0] * math.sin(a) + f[1] * math.cos(a)
     e = math.radians(9); fw = (hx * math.cos(e), hy * math.cos(e), -math.sin(e))
     rn = math.hypot(hy, hx); r = (hy / rn, -hx / rn, 0.0)
     up = (r[1] * fw[2] - r[2] * fw[1], r[2] * fw[0] - r[0] * fw[2], r[0] * fw[1] - r[1] * fw[0])
     dot = lambda a_, b_: a_[0] * b_[0] + a_[1] * b_[1] + a_[2] * b_[2]
     tc = ((U[0] + U[3]) / 2, (U[1] + U[4]) / 2, (U[2] + U[5]) / 2)
-    D = max(max(U[3] - U[0], U[4] - U[1], U[5] - U[2]) * 1.9, 4200)  # parede pequena: câmera não chega perto demais (sem distorção)
+    D = max(max(U[3] - U[0], U[4] - U[1], U[5] - U[2]) * 1.9, dmin)  # parede pequena: câmera não chega perto demais (sem distorção)
     cam = (tc[0] - fw[0] * D, tc[1] - fw[1] * D, tc[2] - fw[2] * D)
     cor = {}
     for i in inst:
@@ -733,7 +763,7 @@ def render3d(page, rect, pids, letra=None, **kw):
             base = p_.get('rgb') or cor.get(p_['i'], (0.80, 0.80, 0.83))
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
             shell.append(b)
-    R = [U[0] - 700, U[1] - 700, 0, U[3] + 700, U[4] + 700, U[5] + 150]
+    mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
     for b in paredes_recorte(R):
         for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
     L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L))
@@ -914,15 +944,16 @@ for w in paredes:          # cotas da planta: por parede, do lado de fora
         vals = [v for i in its for v in (i['bb'][0], i['bb'][3])]
         yl = PY(w['plano']) + (14 if f[1] < 0 else -14)
         cadeia_h(p, vals, yl, yl, PX, fs=6)
-for v in V:                # setas das vistas
-    w = PW[v['paredes'][0]]; f = FV[w['key']]; its = w['itens']
+for v in V:                # setas das vistas (uma por parede)
+  for wid, letra_ in zip(v['paredes'], v['letras']):
+    w = PW[wid]; f = FV[w['key']]; its = w['itens']
     cx = sum((i['bb'][0] + i['bb'][3]) / 2 for i in its) / len(its); cy = sum((i['bb'][1] + i['bb'][4]) / 2 for i in its) / len(its)
     ex, ey = PX(cx) - f[0] * 30, PY(cy) + f[1] * 30
     sx, sy = ex - f[0] * 32, ey + f[1] * 32
     p.draw_line((sx, sy), (ex, ey), color=RED, width=1.4)
     p.draw_polyline([(ex + f[1] * 4 - f[0] * 7, ey + f[0] * 4 + f[1] * 7), (ex, ey), (ex - f[1] * 4 - f[0] * 7, ey - f[0] * 4 + f[1] * 7)], color=RED, width=1.4)
     p.draw_circle((sx - f[0] * 8, sy + f[1] * 8), 7, color=RED, fill=BRANCO, width=1)
-    p.insert_text((sx - f[0] * 8 - 3.5, sy + f[1] * 8 + 3.5), v['letra'], fontname='hebo', fontsize=10, color=RED)
+    p.insert_text((sx - f[0] * 8 - 3.5, sy + f[1] * 8 + 3.5), letra_, fontname='hebo', fontsize=10, color=RED)
 lab = f'PLANTA BAIXA - ESC. 1:{S}'
 p.insert_text((pr.x0 + pr.width / 2 - fz.get_text_length(lab, 'hebo', 8) / 2, pr.y1 - 3), lab, fontname='hebo', fontsize=8)
 
@@ -934,30 +965,48 @@ _nc = 1 if m == 1 else 2 if m <= 4 else 3; _nr = -(-m // _nc)
 cel = [fz.Rect(a.x0 + (i % _nc) * a.width / _nc, a.y0 + (i // _nc) * a.height / _nr, a.x0 + (i % _nc + 1) * a.width / _nc, a.y0 + (i // _nc + 1) * a.height / _nr) for i in range(m)]
 for v, c in zip(com_img, cel):
     (encaixa(p, v['img3d'], fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4)) if v.get('img3d') else render3d(p, fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4), v['paredes']))
-    p.insert_text((c.x0 + 6, c.y0 + 11), f"VISTA {v['letra']}", fontname='hebo', fontsize=10, color=RED)
+    p.insert_text((c.x0 + 6, c.y0 + 11), v['titulo'], fontname='hebo', fontsize=10, color=RED)
 for j in range(1, _nc): p.draw_line((a.x0 + j * a.width / _nc, AREA.y0), (a.x0 + j * a.width / _nc, AREA.y1), color=PRETO, width=0.6)
 for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.x1, a.y0 + j * a.height / _nr), color=PRETO, width=0.6)
 
 # por vista: listagem (tabela + balões na elevação + 3D) e cotas
 for v in V:
     GS = [geom_parede(PW[w]) for w in v['paredes']]
-    n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - VISTA {v['letra']}")
+    n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {v['titulo']}")
     yb = tabela(p, v['linhas'], AREA_IN.x0, AREA_IN.y0)
     if nao_achados and v is V[0]:
         p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
     render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), v['paredes'], letra=v['letra'])
+    # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela (continua na imagem grande)
+    nis = [(w, c) for w in v['paredes'] for c in nichos(PW[w])]
+    if nis:
+        y0_ = (yb + 18 if not (nao_achados and v is V[0]) else yb + 24); h_ = (AREA_IN.y1 - y0_) / len(nis)
+        for k_, (w, c) in enumerate(nis):
+            r_ = fz.Rect(AREA_IN.x0, y0_ + k_ * h_, AREA_IN.x0 + 248, y0_ + (k_ + 1) * h_ - 4)
+            p.draw_rect(r_, color=PRETO, width=0.5)
+            p.insert_text((r_.x0 + 4, r_.y0 + 10), 'DETALHE - NICHO', fontname='hebo', fontsize=7.5, color=RED)
+            # câmera virada para o lado aberto do nicho (em direção ao meio da parede)
+            fw_ = FV[PW[w]['key']]; ax_ = 1 if fw_[0] else 0
+            cm_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in PW[w]['itens']) / len(PW[w]['itens'])
+            cn_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in c) / len(c)
+            r_dir = (fw_[1], -fw_[0])  # direção "direita" da câmera frontal
+            lado = (cm_ - cn_) * r_dir[ax_]
+            render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=v['letra'], itens=c, ang=(-28 if lado > 0 else 28), dmin=2200, margem=60)
     # cotas
-    n += 1; p = nova_prancha(doc, n, f"MEDIDAS E ALTURAS - VISTA {v['letra']}")
-    nc = len(GS); cw = AREA_IN.width / nc
-    zm = max(G['zmax'] for G in GS)
-    S, k = min((escala_para(G['umax'] - G['umin'], zm, cw - 95, AREA_IN.height - 105) for G in GS), key=lambda t: t[1])
+    n += 1; p = nova_prancha(doc, n, f"MEDIDAS E ALTURAS - {v['titulo']}")
+    nc = len(GS); zm = max(G['zmax'] for G in GS)
+    Wm = [G['umax'] - G['umin'] for G in GS]
+    # colunas proporcionais ao tamanho de cada parede (mesma escala para as duas)
+    S, k = escala_para(sum(Wm), zm, AREA_IN.width - 95 * nc, AREA_IN.height - 105)
+    sobra = (AREA_IN.width - sum(w_ * k + 95 for w_ in Wm)) / nc
+    cws = [w_ * k + 95 + sobra for w_ in Wm]
     fy = AREA_IN.y0 + 42 + zm * k
     for j, G in enumerate(GS):
-        cx0 = AREA_IN.x0 + j * cw
+        cw = cws[j]; cx0 = AREA_IN.x0 + sum(cws[:j])
         ox = cx0 + (cw - (G['umax'] - G['umin']) * k) / 2
         desenhar(p, G, ox, fy, k)
         cotar(p, G, ox, fy, k)
-        lab = f"VISTA {v['letra']}{j + 1 if nc > 1 else ''} - ESC. 1:{S}"
+        lab = f"VISTA {v['letras'][j]} - ESC. 1:{S}"
         p.insert_text((cx0 + cw / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
         if j: p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
 
@@ -995,7 +1044,7 @@ q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (g
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
 for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {V[0]['letra']})")
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))
-for v in V: q.append(f"- Vista {v['letra']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem")
+for v in V: q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem")
 q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in V for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
 open(os.path.splitext(cfg['saida'])[0] + '_QUALIDADE.md', 'w', encoding='utf-8').write('\n'.join(q))
 print('\n'.join(q))

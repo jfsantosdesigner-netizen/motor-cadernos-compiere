@@ -3,7 +3,7 @@
 - APROVADO | nº de pranchas 6 = 4 + 2 x 1 vistas
 - APROVADO | itens localizados no DXF: 7/7
 - APROVADO | XML confere com o projeto
-- Vista A: paredes x+@2164 | 7 linhas de listagem
+- VISTA A: paredes x+@2164 | 7 linhas de listagem
   A1: Armário c/ Portas de Giro c/ Rodapé 556x2350x320
   A2: Armário c/ Portas de Giro c/ Rodapé 2210x2350x550
   A3: Tamponamento 2260x18x80

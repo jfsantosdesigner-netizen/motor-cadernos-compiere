@@ -180,6 +180,9 @@ PEDRA_COR = (0.16, 0.16, 0.17)
 AMB = [p_ for p_ in P if p_['i'] not in _usadas and p_['faces'] and 15 <= p_['dim'][2] <= 100
        and max(p_['dim'][0], p_['dim'][1]) >= 500 and min(p_['dim'][0], p_['dim'][1]) >= 250 and 700 <= p_['bb'][2] <= 1100]
 AMB_I = {p_['i'] for p_ in AMB}
+# PAREDES REAIS do DXF (com vãos de janela/porta quando vierem): peça vertical, espessura 60–400 mm, não casada com móvel.
+PAR_DXF = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in {q['i'] for q in AMB} and 60 <= min(p_['dim'][0], p_['dim'][1]) <= 400
+           and max(p_['dim'][0], p_['dim'][1]) >= 100 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) < 20000]
 for p_ in AMB: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
 print('AMBIENTE (pedra):', len(AMB), 'peças')
 PW = {w['id']: w for w in paredes}
@@ -675,7 +678,7 @@ def geom_parede(w):
     wf = []
     for p_ in P:   # REGRA: parede atrás dos móveis na elevação 2D (só referência, não é cotada)
         b = p_['bb']
-        if not (min(p_['dim'][0], p_['dim'][1]) >= 80 and p_['dim'][2] >= 1800 and max(p_['dim'][0], p_['dim'][1]) >= 800): continue
+        if not (min(p_['dim'][0], p_['dim'][1]) >= 80 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) >= 300 and p_['i'] not in _usadas): continue
         if ((b[0] + b[3]) / 2 - Cc[0]) * f[0] + ((b[1] + b[4]) / 2 - Cc[1]) * f[1] < -150: continue
         u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
         if u1_ < umin_ - 400 or u0_ > umax_ + 400: continue
@@ -816,9 +819,16 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
             shell.append(b)
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
-    if ctx: R[axl] -= 1800; R[axl + 3] += 1800
-    for b in paredes_recorte(R):
-        for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
+    if ctx and PAR_DXF:
+        # REGRA (João): paredes reais do DXF que compõem o L (fundo e laterais), com janela/abertura; tira só as que ficam na frente
+        for p_ in PAR_DXF:
+            b = p_['bb']
+            if prof_(b) > 1300 or b[axl + 3] < U[axl] - 1800 or b[axl] > U[axl + 3] + 1800: continue
+            for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
+    else:
+        if ctx: R[axl] -= 1800; R[axl + 3] += 1800
+        for b in paredes_recorte(R):
+            for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
     L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L))
     def pj(v):
         rel = (v[0] - cam[0], v[1] - cam[1], v[2] - cam[2]); z = dot(rel, fw)
@@ -855,7 +865,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     if letra:
         for i in its:
             nb = i.get('num_' + letra)
-            if not nb: continue
+            if not nb or id(i) in kw.get('sem_balao', ()): continue
             b = i['bb']; fi = FV[PW[i['parede']]['key']]; axi = 0 if fi[0] else 1
             c3 = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2]
             c3[axi] = b[axi] if fi[axi] > 0 else b[axi + 3]
@@ -1037,9 +1047,11 @@ for v in V:
         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)
         if nao_achados and s_ is VW[0]:
             p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
-        render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'], contexto=True)
-        # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela (continua na imagem grande)
+        # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela; continua desenhado na imagem
+        # grande, mas os balões dele ficam SÓ no detalhe (imagem grande menos poluída)
         nis = [(w, c) for w in s_['paredes'] for c in nichos(PW[w])]
+        render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'], contexto=True,
+                 sem_balao={id(i) for _, c in nis for i in c})
         if nis:
             y0_ = (yb + 18 if not (nao_achados and s_ is VW[0]) else yb + 24); h_ = (AREA_IN.y1 - y0_) / len(nis)
             for k_, (w, c) in enumerate(nis):

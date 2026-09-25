@@ -1,7 +1,12 @@
-MOTOR DE CADERNOS COMPIERE - v15 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v16 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v16 (25/09/2026) - nuvem, aguardando aprovação do João (7 projetos regerados)
+ - COTAS: parede sozinha na prancha -> prancha dividida: cota FRONTAL à esquerda e VISTA LATERAL do móvel à direita,
+   mesma escala (profundidade a partir da parede + alturas; parede do fundo em cinza). Não gera prancha separada da lateral.
+   Pranchas com duas paredes do L continuam lado a lado como antes.
 
 v15 (25/09/2026) - nuvem, aguardando aprovação do João (5 projetos regerados, com Suíte Casal)
  - COTAS: elevação abre parede a parede (face interna da parede lateral + espessura, até 4 m do móvel; sem parede = 300 mm)

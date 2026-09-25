@@ -482,6 +482,53 @@ def cotar(page, G, ox, fy, k):
             zt = (gaps[-1][1] if gaps else b['z1']) - 70
             cadeia_h(page, [cu0, cu1], Y(zt), Y(zt), X, fs=5.5, fundo=True)
 
+# REGRA (v16, João): VISTA LATERAL do móvel na MESMA prancha da cota frontal (página dividida: frontal à esquerda,
+# lateral à direita, mesma escala). Mostra a PROFUNDIDADE (a partir da parede) e as alturas; parede do fundo em cinza.
+def geom_lateral(w):
+    f = FV[w['key']]; axd = 0 if f[0] else 1; sg = f[axd]; pl = w['plano']
+    H = lambda v: (pl - v[axd]) * sg          # profundidade: 0 na parede, cresce para dentro do ambiente
+    faces = []; boxes = []
+    for it in w['itens']:
+        cor = MADEIRA if it['tipo'] == 'comp' else BRANCO
+        for pi in it['pecas']:
+            sd_ = sorted(P[pi]['dim'])
+            if sd_[1] < 50 or sd_[0] > 60: continue
+            for uq, nv, ft in P[pi]['fq']:
+                faces.append((sum(uu(v[0], v[1], f) for v in uq) / len(uq), [(H(v), v[2]) for v in uq], P[pi].get('rgb', cor), ft))
+        b = it['bb']; h0, h1 = sorted((H((b[0], b[1])), H((b[3], b[4]))))
+        boxes.append(dict(it=it, h0=max(h0, 0), h1=h1, z0=b[2], z1=b[5]))
+    faces.sort(key=lambda t: t[0])            # vista pelo lado de u maior: o mais perto por último
+    hmax = max(b['h1'] for b in boxes); zmax = max(b['z1'] for b in boxes)
+    return dict(faces=faces, boxes=boxes, hmax=hmax, zmax=zmax, esp=150)
+
+def desenhar_lateral(page, L, ox, fy, k, ztop):
+    X = lambda h: ox + h * k
+    Y = lambda z: fy - z * k
+    sh = page.new_shape()
+    sh.draw_rect(fz.Rect(X(-L['esp']), Y(ztop), X(0), fy)); sh.finish(color=(0.2, 0.2, 0.2), fill=(0.9, 0.9, 0.9), width=0.4)
+    for dep, pts, cor, ft in L['faces']:
+        q = [(X(h), Y(z)) for h, z in pts]
+        if area2(q) < 0.15: continue
+        sh.draw_polyline(q + [q[0]]); sh.finish(color=cor, fill=cor, width=0.45, closePath=True)
+        if any(ft):
+            for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
+                if f_: sh.draw_line(a_, b_)
+            sh.finish(color=(0.2, 0.2, 0.2), width=0.3, closePath=False)
+    sh.draw_line((X(-L['esp']) - 6, fy), (X(L['hmax'] + 300), fy)); sh.finish(color=PRETO, width=0.9)
+    sh.commit()
+
+def cotar_lateral(page, L, ox, fy, k):
+    X = lambda h: ox + h * k
+    Y = lambda z: fy - z * k
+    mb = [b for b in L['boxes'] if b['it']['tipo'] == 'mod'] or L['boxes']
+    inf = [b for b in mb if b['z0'] < CORTE]; sup = [b for b in mb if b['z1'] > CORTE]
+    if inf: cadeia_h(page, [0] + [v for b in inf for v in (b['h0'], b['h1'])], fy + 13, fy + 2, X)
+    if sup:
+        yt = Y(max(b['z1'] for b in sup))
+        cadeia_h(page, [0] + [v for b in sup for v in (b['h0'], b['h1'])], yt - 13, yt - 2, X)
+    xr = X(max(b['h1'] for b in mb))
+    cadeia_v(page, [ZP] + [v for b in mb for v in (b['z0'], b['z1'])], xr + 14, xr + 2, Y)
+
 # ---------------- pranchas ----------------
 lay = fz.open(cfg['layout'])
 img = fz.open(cfg['imagens']) if cfg.get('imagens') else None
@@ -1443,11 +1490,18 @@ for v in V:
     n += 1; p = nova_prancha(doc, n, f"MEDIDAS E ALTURAS - {v['titulo']}")
     nc = len(GS); zm = max(G['ztop'] for G in GS)
     Wm = [G['vmax'] - G['vmin'] for G in GS]
+    # REGRA (v16, João): parede sozinha na prancha -> a prancha se divide: FRONTAL à esquerda, LATERAL do móvel à direita
+    LT = geom_lateral(PW[v['paredes'][0]]) if nc == 1 else None
+    Wl = (LT['hmax'] + LT['esp'] + 350) if LT else 0
     # REGRA (v15, João): a elevação PREENCHE a prancha (parede a parede, piso ao teto), mesma escala nas colunas;
     # móvel pequeno não fica pequeno: escala sobe até 1:10. Colunas proporcionais ao tamanho de cada parede.
-    S, k = escala_para(sum(Wm), zm, AREA_IN.width - 80 * nc, AREA_IN.height - 62, cheio=True)
-    sobra = (AREA_IN.width - sum(w_ * k + 80 for w_ in Wm)) / nc
-    cws = [w_ * k + 80 + sobra for w_ in Wm]
+    S, k = escala_para(sum(Wm) + Wl, zm, AREA_IN.width - 80 * (nc + (1 if LT else 0)), AREA_IN.height - 62, cheio=True)
+    if LT:
+        cwl = max(Wl * k + 80, AREA_IN.width * 0.28)
+        cws = [AREA_IN.width - cwl]
+    else:
+        sobra = (AREA_IN.width - sum(w_ * k + 80 for w_ in Wm)) / nc
+        cws = [w_ * k + 80 + sobra for w_ in Wm]
     fy = AREA_IN.y0 + (AREA_IN.height - 62 - zm * k) / 2 + 22 + zm * k
     for j, G in enumerate(GS):
         cw = cws[j]; cx0 = AREA_IN.x0 + sum(cws[:j])
@@ -1457,6 +1511,14 @@ for v in V:
         lab = f"VISTA {v['letras'][j]} - ESC. 1:{S:g}"
         p.insert_text((cx0 + cw / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
         if j: p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
+    if LT:
+        cx0 = AREA_IN.x0 + cws[0]
+        oxl = cx0 + (cwl - (LT['hmax'] + LT['esp'] + 60) * k) / 2 + LT['esp'] * k
+        desenhar_lateral(p, LT, oxl, fy, k, GS[0]['ztop'])
+        cotar_lateral(p, LT, oxl, fy, k)
+        lab = f"VISTA {v['letras'][0]} - LATERAL - ESC. 1:{S:g}"
+        p.insert_text((cx0 + cwl / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
+        p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
 
 
 # ===== CAPA (design fixo: quadro externo + logo + cliente + EXECUTIVO - AMBIENTE) =====

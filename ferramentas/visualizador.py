@@ -33,7 +33,7 @@ figcaption {{ font-size:12px; color:var(--sutil); text-transform:uppercase; lett
 figure img {{ width:100%; height:auto; background:#fff; border:1px solid var(--linha); border-radius:3px; }}
 </style>
 <div class="wrap">
-<h1>Cadernos <b>Compiere</b> · motor v23</h1>
+<h1>Cadernos <b>Compiere</b> · motor v24</h1>
 <div class="tabs" role="tablist">{"".join(tabs)}</div>
 {"".join(secs)}
 </div>

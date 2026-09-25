@@ -1,7 +1,10 @@
-MOTOR DE CADERNOS COMPIERE - v23 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v24 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v24 (25/09/2026) - PC: C:\CLAUDE\motor v24 (v23 fica de reserva)
+ - DIVISÓRIA RIPADA: 2ª imagem da listagem = LATERAL RETA (90°) pelo lado da perna do L (mostra as ripas do L), não diagonal
 
 v23 (25/09/2026) - vai para o PC (C:\CLAUDE\motor v23), aprovada pelo João
  - PLANTA (regra geral, todos os projetos): UMA cota por parede = COMPRIMENTO TOTAL dos móveis (planta limpa)

@@ -1792,11 +1792,11 @@ for v in V:
         cm_ = sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in its_) / len(its_)
         dd_ = [i for i in its_ if abs((i['bb'][axd_] + i['bb'][axd_ + 3]) / 2 - w_['plano']) > 120]   # peças fora da faixa = perna do L
         lado_ = (sum((i['bb'][ax_] + i['bb'][ax_ + 3]) / 2 for i in dd_) / len(dd_) - cm_) * rd_[ax_] if dd_ else 1
-        for ang_ in (0, (62 if lado_ > 0 else -62)):
+        for ang_ in (0, (90 if lado_ > 0 else -90)):   # REGRA (v24, João): 2ª imagem = LATERAL RETA (90°), não diagonal
             n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {v['titulo']}")
             tabela(p, v['linhas'], AREA_IN.x0, AREA_IN.y0)
             render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), v['paredes'], letra=v['letra'], itens=its_,
-                     ang=ang_, elev=6 if ang_ == 0 else 12, dmin=5200, margem=60, isolado=True)
+                     ang=ang_, elev=6, dmin=5200, margem=60, isolado=True)
     for s_ in ([] if v.get('divisoria') else v['subs']):
         n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']}")
         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)

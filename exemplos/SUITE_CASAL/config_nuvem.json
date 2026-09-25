@@ -1,0 +1,19 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "RAFAEL CLARET",
+  "ambiente": "Suíte Casal",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "assets/LAYOUT_FIXO.pdf",
+ "contrato_fonte": "assets/CONTRATO.pdf",
+ "logo": "assets/LOGO.png",
+ "xml": "exemplos/SUITE_CASAL/EXECUTIVO MONTADO SUITE - 10000334.xml",
+ "xml_confere": true,
+ "dxf": "exemplos/SUITE_CASAL/RafaelClaret_Suite.dxf",
+ "pecas_json": "exemplos/SUITE_CASAL/_pecas_dxf.json",
+ "vistas": [],
+ "materiais": "MATERIAIS",
+ "saida": "exemplos/SUITE_CASAL/CADERNO - SUITE CASAL.pdf"
+}

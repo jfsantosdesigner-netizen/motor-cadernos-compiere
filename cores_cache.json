@@ -23,8 +23,36 @@
 ],
 "C:\\CLAUDE\\MATERIAIS\\fabrica\\Berneck\\Linha Trend Colors\\Preto.jpg"
 ],
-"Freijo Puro": null,
-"Pecan": null,
-"Nero": null,
-"Mogno Imperial": null
+"Freijo Puro": [
+[
+0.5292,
+0.4254,
+0.2715
+],
+"MATERIAIS/fabrica\\Pigmento_Laqueados\\Duratex\\Freijo_Puro.jpg"
+],
+"Pecan": [
+[
+0.8197,
+0.8118,
+0.7608
+],
+"MATERIAIS/fabrica\\Berneck\\Linha Trend Colors\\Pecan.jpg"
+],
+"Nero": [
+[
+0.1664,
+0.167,
+0.1749
+],
+"MATERIAIS/fabrica\\Berneck\\Linha Trend Colors\\Nero.jpg"
+],
+"Mogno Imperial": [
+[
+0.5423,
+0.3111,
+0.0964
+],
+"MATERIAIS/fabrica\\Berneck\\Linha Legado\\Mogno_Imperial.jpg"
+]
 }

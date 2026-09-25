@@ -115,7 +115,7 @@ _cc = json.load(open(_CC, encoding='utf-8')) if os.path.exists(_CC) else {}
 _PREF = ('duratex', 'arauco', 'guararapes', 'berneck', 'eucatex', 'masisa', 'stelben')
 def cor_material(nome):
     if not nome: return None
-    if nome in _cc: return tuple(_cc[nome][0]) if _cc[nome] else None
+    if _cc.get(nome): return tuple(_cc[nome][0])   # 'sem textura' antigo não bloqueia nova busca
     tk = _norm(nome).split(); best = None
     for cand in ([tk] + ([tk[:-1]] if len(tk) > 1 else [])):
         n = ' '.join(cand)

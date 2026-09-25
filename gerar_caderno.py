@@ -621,6 +621,53 @@ def geom_parede(w):
     faces.sort(key=lambda t: -t[0]); faces = wf + faces
     return dict(w=w, f=f, faces=faces, boxes=boxes, umin=min(b['u0'] for b in boxes), umax=max(b['u1'] for b in boxes), zmax=max(b['z1'] for b in boxes))
 
+def _ordem_pecas(fcs, bbs, cam):
+    # Ordem de desenho POR PEÇA (pintor): A antes de B quando B está na frente de A.
+    # Frente/trás pelo eixo de menor sobreposição das caixas (dobradiça/cabideiro atrás da porta fica atrás).
+    import heapq
+    fundo = sorted([f_ for f_ in fcs if f_[5] < 0], key=lambda t: -t[1])
+    por = {}
+    for f_ in fcs:
+        if f_[5] >= 0: por.setdefault(f_[5], []).append(f_)
+    ids = list(por)
+    tela = {}
+    for i_ in ids:
+        xs_ = [x for f_ in por[i_] for x, _ in f_[2]]; ys_ = [y for f_ in por[i_] for _, y in f_[2]]
+        tela[i_] = (min(xs_), min(ys_), max(xs_), max(ys_))
+    ctr = {i_: [(bbs[i_][k] + bbs[i_][k + 3]) / 2 for k in range(3)] for i_ in ids}
+    dist = {i_: math.dist(ctr[i_], cam) for i_ in ids}
+    def frente(a, b):  # 1: a na frente de b | -1: b na frente de a | 0: indefinido
+        A, B = bbs[a], bbs[b]
+        ov = sorted((min(A[k + 3], B[k + 3]) - max(A[k], B[k]), k) for k in range(3))
+        for o_, k in ov:
+            ca, cb = ctr[a][k], ctr[b][k]
+            if abs(ca - cb) < 1e-6: continue
+            if cam[k] > max(ca, cb) or cam[k] < min(ca, cb):
+                return 1 if abs(cam[k] - ca) < abs(cam[k] - cb) else -1
+            if o_ > 0.5: break
+        return 0
+    depois = {i_: [] for i_ in ids}; grau = {i_: 0 for i_ in ids}
+    for n_, a in enumerate(ids):
+        ta = tela[a]
+        for b in ids[n_ + 1:]:
+            tb = tela[b]
+            if ta[2] <= tb[0] or tb[2] <= ta[0] or ta[3] <= tb[1] or tb[3] <= ta[1]: continue
+            r_ = frente(a, b)
+            if r_ > 0: depois[b].append(a); grau[a] += 1
+            elif r_ < 0: depois[a].append(b); grau[b] += 1
+    hp = [(-dist[i_], i_) for i_ in ids if grau[i_] == 0]; heapq.heapify(hp)
+    feito = set(); out = list(fundo)
+    while len(feito) < len(ids):
+        if not hp:
+            i_ = max((j for j in ids if j not in feito), key=lambda j: dist[j]); grau[i_] = 0
+        else: _, i_ = heapq.heappop(hp)
+        if i_ in feito: continue
+        feito.add(i_); out += sorted(por[i_], key=lambda t: -t[1])
+        for j in depois[i_]:
+            grau[j] -= 1
+            if grau[j] == 0 and j not in feito: heapq.heappush(hp, (-dist[j], j))
+    return out
+
 def render3d(page, rect, pids, letra=None, **kw):
     its = [i for w in pids for i in PW[w]['itens']]
     U = list(its[0]['bb'])
@@ -645,30 +692,30 @@ def render3d(page, rect, pids, letra=None, **kw):
         b = p_['bb']
         if all(b[k] >= E[k] for k in range(3)) and all(b[k + 3] <= E[k + 3] for k in range(3)):
             base = p_.get('rgb') or cor.get(p_['i'], (0.80, 0.80, 0.83))
-            for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1))
+            for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
+            shell.append(b)
     R = [U[0] - 700, U[1] - 700, 0, U[3] + 700, U[4] + 700, U[5] + 150]
     for b in paredes_recorte(R):
-        for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0))
-    shell.append(([(R[0], R[1], 0), (R[3], R[1], 0), (R[3], R[4], 0), (R[0], R[4], 0)], (0.86, 0.86, 0.86), [True] * 4, 0))
+        for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
     L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L))
     def pj(v):
         rel = (v[0] - cam[0], v[1] - cam[1], v[2] - cam[2]); z = dot(rel, fw)
         return (dot(rel, r) / z, dot(rel, up) / z, z)
     fcs = []
-    for vs, base, ft, gr in src:
+    for vs, base, ft, gr, pc in src:
         pp = [pj(v) for v in vs]
         if min(t[2] for t in pp) < 50: continue
         nm = _n(vs[0], vs[1], vs[2]); fs_ = 0.72 + 0.28 * abs(dot(nm, L)) / nl
-        fcs.append((gr, sum(t[2] for t in pp) / len(pp), [(t[0], t[1]) for t in pp], tuple(min(1, x * fs_) for x in base), ft))
+        fcs.append((gr, sum(t[2] for t in pp) / len(pp), [(t[0], t[1]) for t in pp], tuple(min(1, x * fs_) for x in base), ft, pc))
     if not fcs: return
-    fcs.sort(key=lambda t: (t[0], -t[1]))
-    xs = [x for _, _, q, _, _ in fcs for x, _ in q]; ys = [y for _, _, q, _, _ in fcs for _, y in q]
+    fcs = _ordem_pecas(fcs, shell, cam)
+    xs = [x for f_ in fcs for x, _ in f_[2]]; ys = [y for f_ in fcs for _, y in f_[2]]
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
     k = min((rect.width - 16) / (x1 - x0), (rect.height - 16) / (y1 - y0))
     ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
     T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
     sh = page.new_shape()
-    for gr_, dep_, q, c_, ft in fcs:
+    for gr_, dep_, q, c_, ft, _pc in fcs:
         Q = [T(x, y) for x, y in q]
         if area2(Q) < 0.1: continue
         sh.draw_polyline(Q + [Q[0]]); sh.finish(color=c_, fill=c_, width=0.5, closePath=True)

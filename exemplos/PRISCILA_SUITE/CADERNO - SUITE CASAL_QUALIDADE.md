@@ -8,7 +8,7 @@
 - APROVADO | texturas dos materiais
 - VISTA A: paredes x-@120 | 10 linhas de listagem
 - VISTA B: paredes y+@-120 | 13 linhas de listagem
-- VISTA C: paredes x+@4816 | 8 linhas de listagem
+- VISTA C: paredes x+@4816 | 8 linhas de listagem | LISTAGEM POLUÍDA -> 1 detalhe(s) de módulo pequeno, 7 peça(s) atrás de painel no detalhe das costas
 - VISTA D: paredes y-@-4810 | 5 linhas de listagem
 - DIVISÓRIA RIPADA: paredes DIVISORIA@1951 | 19 linhas de listagem
   A1: Armário c/ Portas de Giro c/ Rodapé 2820x2540x550

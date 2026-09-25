@@ -1199,6 +1199,51 @@ def costas(w):
         if tapa: out.append(i)
     return out
 
+# ===== CONDIÇÃO (v21, João): LISTAGEM POLUÍDA =====
+# Parede com MUITOS balões (>= 12 peças numeradas) -> a imagem grande fica só com os painéis/móveis principais e:
+#  - MÓDULO PEQUENO FECHADO (gaveta/mesa de cabeceira suspensa: até 1 m x 0,7 m, com porta/gaveta) + tampo em cima
+#    vai para um DETALHE embaixo da tabela (um por tipo; repetidos iguais = um detalhe só), balões só lá;
+#  - peça ESCONDIDA ATRÁS DE PAINEL (afastadores atrás da cabeceira) vai para o DETALHE DAS COSTAS.
+def poluida(w):
+    return not w.get('divisoria') and len(w['itens']) >= 12
+
+def pequenos(w):
+    if not poluida(w): return []
+    f_ = FV[w['key']]; al = 1 if f_[0] else 0; out = []; tipos = {}
+    for m in w['itens']:
+        mb = m['bb']
+        if m['tipo'] != 'mod' or mb[al + 3] - mb[al] > 1000 or mb[5] - mb[2] > 700 or not tem_porta(m, w): continue
+        g = [m] + [o for o in w['itens'] if o['tipo'] == 'comp' and abs(o['bb'][2] - mb[5]) <= 25
+                   and o['bb'][al] >= mb[al] - 40 and o['bb'][al + 3] <= mb[al + 3] + 40 and (o['bb'][5] - o['bb'][2]) <= 40]
+        # só módulo SOLTO (nenhum outro módulo encostado a até 100 mm): mesa de cabeceira, gaveteiro suspenso; armários de
+        # cozinha lado a lado NÃO entram
+        if any(o is not m and o['tipo'] == 'mod' and geo.dist_caixas(o['bb'], mb) <= 100 for o in w['itens']): continue
+        chave = (m['desc'], m['dim'])
+        if chave in tipos: tipos[chave]['todos'] += g; continue
+        tipos[chave] = dict(mostra=g, todos=list(g)); out.append(tipos[chave])
+    return out
+
+def costas_paineis(w):
+    if not poluida(w): return []
+    f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
+    perto = lambda bb: min(bb[ad] * sg_, bb[ad + 3] * sg_); longe = lambda bb: max(bb[ad] * sg_, bb[ad + 3] * sg_)
+    grandes = [i for i in w['itens'] if i['tipo'] == 'comp' and (i['bb'][ad + 3] - i['bb'][ad]) <= 30
+               and (i['bb'][al + 3] - i['bb'][al]) * (i['bb'][5] - i['bb'][2]) >= 5e5]
+    out = []
+    for i in w['itens']:
+        if i['tipo'] != 'comp' or i in grandes: continue
+        b = i['bb']
+        if any(perto(b) >= longe(g['bb']) - 5 and b[al] >= g['bb'][al] - 30 and b[al + 3] <= g['bb'][al + 3] + 30 for g in grandes): out.append(i)
+    # cobertos pela UNIÃO dos painéis (afastador atrás da emenda de dois painéis)
+    if grandes:
+        g0 = min(g['bb'][al] for g in grandes); g1 = max(g['bb'][al + 3] for g in grandes)
+        z0 = min(g['bb'][2] for g in grandes); z1 = max(g['bb'][5] for g in grandes); fundo = max(longe(g['bb']) for g in grandes)
+        for i in w['itens']:
+            b = i['bb']
+            if i['tipo'] == 'comp' and i not in grandes and i not in out and perto(b) >= fundo - 5 and b[al] >= g0 - 30 and b[al + 3] <= g1 + 30 and b[2] >= z0 - 30 and b[5] <= z1 + 30:
+                out.append(i)
+    return out
+
 def tem_porta(m, w):
     # porta/frente/basculante = chapa fina (<= 30 mm na profundidade) na FRENTE do módulo cobrindo >= 40% da face frontal
     f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
@@ -1638,10 +1683,11 @@ for v in V:
         nis = [(w, c) for w in s_['paredes'] for c in detalhes(PW[w])]
         # REGRA (João): item listado que fica ESCONDIDO ATRÁS dos módulos (ex.: painel nas costas da ilha)
         # ganha um detalhe visto de trás; balão dele só nesse detalhe.
-        cts = [(w, c, 'costas') for w in s_['paredes'] for c in [costas(PW[w])] if c]
+        cts = [(w, c + [o for o in costas_paineis(PW[w]) if o not in c], 'costas') for w in s_['paredes'] for c in [costas(PW[w])] if c or costas_paineis(PW[w])]
+        mps = [(w, t_) for w in s_['paredes'] for t_ in pequenos(PW[w])]
         render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'], contexto=True,
-                 sem_balao={id(i) for _, c in nis for i in c} | {id(i) for _, c, _ in cts for i in c})
-        nis = [(w, c, 'nicho') for w, c in nis] + cts
+                 sem_balao={id(i) for _, c in nis for i in c} | {id(i) for _, c, _ in cts for i in c} | {id(i) for _, t_ in mps for i in t_['todos']})
+        nis = [(w, c, 'nicho') for w, c in nis] + cts + [(w, t_['mostra'], 'modulo') for w, t_ in mps]
         if nis:
             y0_ = (yb + 18 if not (nao_achados and s_ is VW[0]) else yb + 24)
             # quadro com o FORMATO do detalhe (nicho largo = quadro largo e baixo); largos ocupam a linha inteira
@@ -1661,7 +1707,11 @@ for v in V:
                 yy += h2
             for (w, c, tp_, _a), r_ in quadros:
                 p.draw_rect(r_, color=PRETO, width=0.5)
-                p.insert_text((r_.x0 + 4, r_.y0 + 10), 'DETALHE - NICHO' if tp_ == 'nicho' else 'DETALHE - COSTAS', fontname='hebo', fontsize=7.5, color=RED)
+                _tit = 'DETALHE - NICHO' if tp_ == 'nicho' else 'DETALHE - COSTAS' if tp_ == 'costas' else ('DETALHE - ' + c[0]['desc'].upper())[:44]
+                p.insert_text((r_.x0 + 4, r_.y0 + 10), _tit, fontname='hebo', fontsize=7.5, color=RED)
+                if tp_ == 'modulo':   # módulo pequeno sozinho, em diagonal leve, balões só dele
+                    render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=c, ang=25, elev=18, dmin=2000, margem=60, isolado=True)
+                    continue
                 if tp_ == 'costas':
                     todos_ = PW[w]['itens']
                     render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=todos_, ang=180 + 20,
@@ -1789,7 +1839,12 @@ for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; lis
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))
 TEX_FALTA = [m_ for m_ in TEX_FALTA if not textura(m_)] + [m_ for m_, v_ in _cc.items() if not v_ and m_ in _todas_mats]
 q.append(f"- {'APROVADO' if not TEX_FALTA else 'INCERTO'} | texturas dos materiais" + ('' if not TEX_FALTA else ' — faltando (sai cor lisa): ' + ', '.join(TEX_FALTA)))
-for v in VW: q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem")
+for v in VW:
+    _ex = []
+    for w_ in v['paredes']:
+        if pequenos(PW[w_]): _ex.append(f"{len(pequenos(PW[w_]))} detalhe(s) de módulo pequeno")
+        if costas_paineis(PW[w_]): _ex.append(f"{len(costas_paineis(PW[w_]))} peça(s) atrás de painel no detalhe das costas")
+    q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem" + (' | LISTAGEM POLUÍDA -> ' + ', '.join(_ex) if _ex else ''))
 q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in VW for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
 open(os.path.splitext(cfg['saida'])[0] + '_QUALIDADE.md', 'w', encoding='utf-8').write('\n'.join(q))
 print('\n'.join(q))

@@ -4,7 +4,7 @@
 - APROVADO | itens localizados no DXF: 38/38
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais
-- VISTA A: paredes y+@-150 | 28 linhas de listagem
+- VISTA A: paredes y+@-150 | 28 linhas de listagem | LISTAGEM POLUÍDA -> 3 peça(s) atrás de painel no detalhe das costas
 - VISTA B: paredes y-@-2215 | 10 linhas de listagem
   A1: Armário Superior 618x350x605
   A2: Armário Superior 725x788x200

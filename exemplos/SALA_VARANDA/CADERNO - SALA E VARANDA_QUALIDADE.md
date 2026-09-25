@@ -6,7 +6,7 @@
   - INCERTO: Cunha 45° 25MM 2700x25x70 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais
-- VISTA A: paredes x-@4151 | 12 linhas de listagem
+- VISTA A: paredes x-@4151 | 12 linhas de listagem | LISTAGEM POLUÍDA -> 4 peça(s) atrás de painel no detalhe das costas
 - VISTA B: paredes x+@6771 | 6 linhas de listagem
 - VISTA C: paredes y+@6377 | 1 linhas de listagem
 - VISTA D: paredes y+@5741 | 1 linhas de listagem

@@ -1,7 +1,15 @@
-MOTOR DE CADERNOS COMPIERE - v20 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v21 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v21 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
+ PRINCÍPIO (João): o motor é REGRAS + CONDIÇÕES. Nada do que está certo é apagado; cada situação nova vira uma condição nova.
+ - CONDIÇÃO "LISTAGEM POLUÍDA" (parede com 12+ peças numeradas): a imagem grande fica só com os painéis/móveis principais;
+   * MÓDULO PEQUENO FECHADO e SOLTO (até 1 m x 0,7 m, com porta/gaveta, sem outro módulo encostado; ex.: mesa de cabeceira
+     suspensa) + tampo -> DETALHE embaixo da tabela com o nome do módulo (um por tipo), balões só lá
+   * peça ESCONDIDA ATRÁS DE PAINEL (afastadores atrás da cabeceira) -> DETALHE DAS COSTAS
+   * relatório de qualidade avisa quando a condição disparou
 
 v20 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
  - GAVETA / MÓDULO MONTADO COM PAINÉIS (não é módulo do Promob: fundo horizontal >= 0,1 m² acima de 300 mm + 3+ peças em pé

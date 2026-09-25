@@ -189,6 +189,7 @@ for p_ in P:
         nm_ = c_.most_common(1)[0][0]; rgb = cor_material(nm_)
         if rgb: p_['rgb'] = rgb; p_['mat'] = nm_; _nc += 1; _usadas[nm_] += 1
 print('CORES: %d pecas coloridas pelo MATERIAIS (medidas no XML: %d)' % (_nc, len(_dm)))
+TEX_FALTA = [m_ for m_ in _usadas if _cc.get(m_) and not os.path.exists(os.path.join(_MD, 'texturas', _cc[m_][1].replace('\\', '/').split('/')[-1].lower()))]
 for nm_, q_ in _usadas.most_common(): print('   %-22s %4d pecas <- %s' % (nm_, q_, os.path.relpath(_cc[nm_][1], _MAT)))
 for nm_ in [k for k, v in _cc.items() if not v]: print('   SEM TEXTURA:', nm_)
 inst = geo.casar(P, linhas, None if cfg.get('listagem_pdf') else QT)
@@ -249,6 +250,9 @@ for p_ in ELETROS: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
 print('AMBIENTE (eletros/objetos):', len(ELETROS), 'peças')
 def _arestas(faces):
     # contorno nítido: aresta de borda ou quina (normais diferentes); diagonal de triangulação não aparece
+    # só arestas RETAS de verdade (alinhadas a um eixo): quina de parede, vão de janela, borda da pedra.
+    # Aresta inclinada = triangulação -> nunca aparece (evita riscos diagonais no desenho).
+    reta = lambda a_, b_: sum(1 for k_ in range(3) if abs(a_[k_] - b_[k_]) > 1) <= 1
     ed = {}; nrm = [_n(fc[0], fc[1], fc[2]) for fc in faces]
     kk = lambda v: tuple(round(c, 0) for c in v)
     for i_, fc in enumerate(faces):
@@ -262,7 +266,7 @@ def _arestas(faces):
         for j_ in range(len(fc)):
             a_, b_ = kk(fc[j_]), kk(fc[(j_ + 1) % len(fc)])
             fs2 = ed.get(frozenset((a_, b_)), [])
-            if a_ == b_: fl.append(False); continue
+            if a_ == b_ or not reta(a_, b_): fl.append(False); continue
             if len(fs2) < 2: fl.append(True); continue
             n1, n2 = nrm[fs2[0]], nrm[fs2[1]]
             fl.append(abs(sum(x * y for x, y in zip(n1, n2))) < 0.94)
@@ -622,9 +626,10 @@ def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
         q = [(X(u), Y(z)) for u, z in pts]
         if area2(q) < 0.15: continue
         sh.draw_polyline(q + [q[0]]); sh.finish(color=cor, fill=cor, width=0.45, closePath=True)
-        for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
-            if f_: sh.draw_line(a_, b_)
-        sh.finish(color=(0.2, 0.2, 0.2), width=0.3)
+        if any(ft):   # só traça quando há aresta de contorno (senão o PDF repetia o contorno da triangulação)
+            for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
+                if f_: sh.draw_line(a_, b_)
+            sh.finish(color=(0.2, 0.2, 0.2), width=0.3, closePath=False)
     sh.draw_line((X(G['umin']) - 6, fy), (X(G['umax']) + 6, fy)); sh.finish(color=PRETO, width=0.9)
     sh.commit()
 
@@ -772,7 +777,8 @@ def geom_parede(w):
             for fc, fl in zip(p_['faces'], p_['ft']):
                 if max(abs(((w['plano'] - v[0] if f[0] else w['plano'] - v[1]) * (f[0] or f[1]))) for v in fc) > 300: continue
                 q_ = [(uu(v[0], v[1], f), v[2]) for v in fc]
-                wf.append((1e9, [(min(max(u_, umin_ - 150), umax_ + 150), min(z_, zmax_ + 100)) for u_, z_ in q_], (0.9, 0.9, 0.9), fl))
+                q2 = [(min(max(u_, umin_ - 150), umax_ + 150), min(z_, zmax_ + 100)) for u_, z_ in q_]
+                wf.append((1e9, q2, (0.9, 0.9, 0.9), [f0 and a0 == b0 for f0, a0, b0 in zip(fl, q2, q_)]))
             continue
         if not (80 <= min(p_['dim'][0], p_['dim'][1]) <= 400 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) >= 300 and p_['i'] not in _usadas): continue
         if ((b[0] + b[3]) / 2 - Cc[0]) * f[0] + ((b[1] + b[4]) / 2 - Cc[1]) * f[1] < -150: continue
@@ -1071,9 +1077,10 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             Q = [T(x, y) for x, y in q]
             if area2(Q) < 0.1: continue
             sh.draw_polyline(Q + [Q[0]]); sh.finish(color=c_, fill=c_, width=0.5, closePath=True)
-            for (a_, b_), fl_ in zip(zip(Q, Q[1:] + Q[:1]), ft):
-                if fl_: sh.draw_line(a_, b_)
-            sh.finish(color=(0.2, 0.2, 0.2), width=0.35)
+            if any(ft):
+                for (a_, b_), fl_ in zip(zip(Q, Q[1:] + Q[:1]), ft):
+                    if fl_: sh.draw_line(a_, b_)
+                sh.finish(color=(0.2, 0.2, 0.2), width=0.35, closePath=False)
         sh.commit()
         if ctx: page.show_pdf_page(rect, _tmp, 0, clip=rect)
     if letra:
@@ -1235,9 +1242,10 @@ for z, q, cor, ft in fcs:
     q = [(min(max(a, pr.x0), pr.x1), min(max(b_, pr.y0), pr.y1)) for a, b_ in q]
     fill = cor or BRANCO
     sh.draw_polyline(q + [q[0]]); sh.finish(color=fill, fill=fill, width=0.4, closePath=True)
-    for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
-        if f_: sh.draw_line(a_, b_)
-    sh.finish(color=PRETO if cor is None else (0.3, 0.3, 0.3), width=0.5 if cor is None else 0.3)
+    if any(ft):
+        for (a_, b_), f_ in zip(zip(q, q[1:] + q[:1]), ft):
+            if f_: sh.draw_line(a_, b_)
+        sh.finish(color=PRETO if cor is None else (0.3, 0.3, 0.3), width=0.5 if cor is None else 0.3, closePath=False)
 sh.commit()
 for w in paredes:          # cotas da planta: por parede, do lado de fora
     f = FV[w['key']]; its = w['itens']
@@ -1381,6 +1389,8 @@ q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (g
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
 for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {VW[0]['letra']})")
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))
+TEX_FALTA = [m_ for m_ in TEX_FALTA if not textura(m_)]
+q.append(f"- {'APROVADO' if not TEX_FALTA else 'INCERTO'} | texturas dos materiais" + ('' if not TEX_FALTA else ' — faltando (sai cor lisa): ' + ', '.join(TEX_FALTA)))
 for v in VW: q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem")
 q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in VW for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
 open(os.path.splitext(cfg['saida'])[0] + '_QUALIDADE.md', 'w', encoding='utf-8').write('\n'.join(q))

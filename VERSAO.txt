@@ -1,9 +1,13 @@
-MOTOR DE CADERNOS COMPIERE - v11 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v12 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
 
-v11 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC
+v12 (25/09/2026) - nuvem, aguardando aprovação do João para ir ao PC (testada no 4º projeto: Caroline / Cozinha)
+ - corrigido: riscos diagonais (triangulação) nas cotas 2D, no 3D e na planta; só contornos reais
+ - relatório de qualidade avisa textura faltando; texturas novas: Areia, Itapuã
+
+v11 (25/09/2026) - nuvem
  - planta só com móveis e paredes (sem forro/sanca/pedra/eletros por cima); setas das vistas não se sobrepõem
  - TODO nicho aberto vira DETALHE embaixo da tabela (3+ painéis/tamponamentos, 2+ horizontais, até 2 m x 1,2 m)
  - NICHO SUSPENSO (módulo alto sem móvel embaixo, ex. armário sobre geladeira) vira DETALHE

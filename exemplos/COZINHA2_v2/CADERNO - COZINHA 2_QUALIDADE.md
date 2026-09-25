@@ -3,6 +3,7 @@
 - APROVADO | nº de pranchas 10 = 4 + 4 listagens + 2 cotas
 - APROVADO | itens localizados no DXF: 41/41
 - APROVADO | XML confere com o projeto
+- APROVADO | texturas dos materiais
 - VISTA A: paredes x+@2153 | 20 linhas de listagem
 - VISTA B: paredes y+@-170 | 1 linhas de listagem
 - VISTA C: paredes y-@-4325 | 14 linhas de listagem

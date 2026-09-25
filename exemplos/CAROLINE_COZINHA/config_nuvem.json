@@ -1,0 +1,19 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "CAROLINE",
+  "ambiente": "Cozinha",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "assets/LAYOUT_FIXO.pdf",
+ "contrato_fonte": "assets/CONTRATO.pdf",
+ "logo": "assets/LOGO.png",
+ "xml": "exemplos/CAROLINE_COZINHA/EXECUTIVO COZINHA - 10000342.xml",
+ "xml_confere": true,
+ "dxf": "exemplos/CAROLINE_COZINHA/COZINHA.dxf",
+ "pecas_json": "exemplos/CAROLINE_COZINHA/_pecas_dxf.json",
+ "vistas": [],
+ "materiais": "MATERIAIS",
+ "saida": "exemplos/CAROLINE_COZINHA/CADERNO - COZINHA.pdf"
+}

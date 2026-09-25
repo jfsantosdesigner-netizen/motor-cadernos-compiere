@@ -3,6 +3,7 @@
 - APROVADO | nº de pranchas 8 = 4 + 2 listagens + 2 cotas
 - APROVADO | itens localizados no DXF: 30/30
 - APROVADO | XML confere com o projeto
+- APROVADO | texturas dos materiais
 - VISTA A: paredes y+@-160 | 26 linhas de listagem
 - VISTA B: paredes y-@-2033 | 4 linhas de listagem
   A1: Armário 2 Portas 720x1011x200

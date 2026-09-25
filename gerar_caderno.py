@@ -998,7 +998,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     cor = {}
     for i in inst:
         for pi in i['pecas']: cor[pi] = MADEIRA if i['tipo'] == 'comp' else (0.97, 0.97, 0.97)
-    src = []; shell = []; _pmat = {}
+    src = []; shell = []; _pmat = {}; _pidx = {}
     for p_ in P:
         b = p_['bb']
         sd_ = sorted(p_['dim'])
@@ -1012,7 +1012,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: 3D só com MDF (chapas); suportes, dobradiças, cabideiros, pés = fora
         if (dentro_(b, p_['i']) if ctx else (all(b[k] >= E[k] for k in range(3)) and all(b[k + 3] <= E[k + 3] for k in range(3)))):
             base = p_.get('rgb') or cor.get(p_['i'], (0.80, 0.80, 0.83))
-            _pmat[len(shell)] = p_.get('mat')
+            _pmat[len(shell)] = p_.get('mat'); _pidx[len(shell)] = p_['i']
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
             shell.append(b)
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
@@ -1046,13 +1046,19 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     if not fcs: return
     fcs = _ordem_pecas(fcs, shell, cam)
     xs = [x for f_ in fcs for x, _ in f_[2]]; ys = [y for f_ in fcs for _, y in f_[2]]
+    if itens:   # detalhe: enquadra só as peças do detalhe (zoom)
+        _alvo = {pi for i in its for pi in i['pecas']}; _bi = {pc_: b_ for pc_, b_ in enumerate(shell)}
+        cc = [pj((b_[i0], b_[1 + j0], b_[2 + k0])) for pc_, b_ in _bi.items() if _pidx.get(pc_) in _alvo for i0 in (0, 3) for j0 in (0, 3) for k0 in (0, 3)]
+        cc = [c_ for c_ in cc if c_[2] > 50]
+        if cc: xs = [c_[0] for c_ in cc]; ys = [c_[1] for c_ in cc]
     if ctx:   # enquadra a parede da vista (+ um pouco do ambiente) e recorta o resto
         Uq = list(U); Uq[axl] -= 700; Uq[axl + 3] += 700; Uq[2] = 0; Uq[5] += 150
         cc = [pj((Uq[i0], Uq[1 + j0], Uq[2 + k0])) for i0 in (0, 3) for j0 in (0, 3) for k0 in (0, 3)]
         cc = [c_ for c_ in cc if c_[2] > 50]
         xs = [c_[0] for c_ in cc]; ys = [c_[1] for c_ in cc]
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-    k = min((rect.width - 16) / (x1 - x0), (rect.height - 16) / (y1 - y0))
+    mgf = 22 if itens else 16
+    k = min((rect.width - mgf) / (x1 - x0), (rect.height - mgf) / (y1 - y0))
     ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
     T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
     if _Im is not None and cfg.get('textura', True) and any(textura(m_) for m_ in _pmat.values()):
@@ -1071,6 +1077,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
         sh.commit()
         if ctx: page.show_pdf_page(rect, _tmp, 0, clip=rect)
     if letra:
+        _bal = []
         for i in its:
             nb = i.get('num_' + letra)
             if not nb or id(i) in kw.get('sem_balao', ()): continue
@@ -1078,8 +1085,18 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             c3 = [(b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2]
             c3[axi] = b[axi] if (fi[axi] > 0) != bool(kw.get('costas')) else b[axi + 3]
             t3 = pj(c3); cx, cy = T(t3[0], t3[1]); t_ = str(nb); wv = fz.get_text_length(t_, 'hebo', 7) + 4
-            page.draw_rect(fz.Rect(cx - wv / 2, cy - 5.5, cx + wv / 2, cy + 5.5), color=PRETO, fill=(1, 1, 0), width=0.4)
-            page.insert_text((cx - wv / 2 + 2, cy + 2.5), t_, fontname='hebo', fontsize=7)
+            # REGRA: balões não ficam um em cima do outro -> desloca o novo e liga ao ponto com traço fino
+            bx, by = cx, cy
+            for tent in range(24):
+                rr = fz.Rect(bx - wv / 2 - 1, by - 6.5, bx + wv / 2 + 1, by + 6.5)
+                if not any(rr.intersects(o_) for o_ in _bal): break
+                ang_ = tent * 0.9; dist_ = 10 + 3 * tent
+                bx, by = cx + dist_ * math.cos(ang_), cy + dist_ * math.sin(ang_)
+            if (bx, by) != (cx, cy):
+                page.draw_line((cx, cy), (bx, by), color=PRETO, width=0.35); page.draw_circle((cx, cy), 0.9, color=PRETO, fill=PRETO)
+            _bal.append(fz.Rect(bx - wv / 2 - 1, by - 6.5, bx + wv / 2 + 1, by + 6.5))
+            page.draw_rect(fz.Rect(bx - wv / 2, by - 5.5, bx + wv / 2, by + 5.5), color=PRETO, fill=(1, 1, 0), width=0.4)
+            page.insert_text((bx - wv / 2 + 2, by + 2.5), t_, fontname='hebo', fontsize=7)
 
 
 import xml.etree.ElementTree as _ET
@@ -1288,16 +1305,13 @@ for v in V:
                 la = max(i['bb'][ax_ + 3] for i in c) - min(i['bb'][ax_] for i in c); al = max(i['bb'][5] for i in c) - min(i['bb'][2] for i in c)
                 return max(0.25, min(1.6, al / max(la, 1)))
             itens_q = [(w, c, tp_, _asp(w, c)) for w, c, tp_ in nis]
-            disp = AREA_IN.y1 - y0_; melhor = None
-            for nl_ in range(1, len(itens_q) + 1):   # testa 1, 2, ... linhas e fica com o arranjo de quadros maiores
-                per = -(-len(itens_q) // nl_); rows = [itens_q[i0:i0 + per] for i0 in range(0, len(itens_q), per)]
-                hs = [min(disp / len(rows), 18 + (248 - 24 * len(r0)) / sum(1 / it_[3] for it_ in r0)) for r0 in rows]
-                if melhor is None or min(hs) > melhor[0]: melhor = (min(hs), rows, hs)
-            _, rows, hs = melhor; quadros = []; yy = y0_
-            for r0, h2 in zip(rows, hs):
-                xx = AREA_IN.x0
+            # REGRA: detalhes usam TODA a coluna da esquerda embaixo da tabela (um por linha; se faltar altura, 2 por linha)
+            disp = AREA_IN.y1 - y0_; n_ = len(itens_q)
+            por = 1 if disp / n_ >= 95 else 2; rows = [itens_q[i0:i0 + por] for i0 in range(0, n_, por)]
+            h2 = disp / len(rows); quadros = []; yy = y0_
+            for r0 in rows:
+                lg = (248 - 4 * (len(r0) - 1)) / len(r0); xx = AREA_IN.x0
                 for it_ in r0:
-                    lg = (h2 - 18) / it_[3] + 20
                     quadros.append((it_, fz.Rect(xx, yy, xx + lg, yy + h2 - 4))); xx += lg + 4
                 yy += h2
             for (w, c, tp_, _a), r_ in quadros:

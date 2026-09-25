@@ -682,11 +682,25 @@ def geom_parede(w):
         u0_ = max(u0_, umin_ - 150); u1_ = min(u1_, umax_ + 150); z1_ = min(z1_, zmax_ + 100)
         if u1_ - u0_ < 5: continue
         wf.append((1e9, [(u0_, 0), (u1_, 0), (u1_, z1_), (u0_, z1_)], (0.9, 0.9, 0.9), [True] * 4))
-    for p_ in AMB:   # pedra/bancada: só referência no 2D (não entra em boxes -> não é cotada)
+    # AMBIENTE no 2D (só referência, NUNCA cotado): pedra e móveis das paredes vizinhas perto desta parede.
+    axd = 0 if f[0] else 1; sg = f[axd]
+    prof_ = lambda bb: min((w['plano'] - bb[axd]) * sg, (w['plano'] - bb[axd + 3]) * sg)
+    cl = lambda u: min(max(u, umin_ - 300), umax_ + 300)
+    for p_ in AMB:   # pedra só aparece na parede onde ela está
         b = p_['bb']; u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
-        if u1_ < umin_ - 50 or u0_ > umax_ + 50: continue
+        if prof_(b) > 1000 or u1_ < umin_ - 50 or u0_ > umax_ + 50: continue
         for fc in p_['faces']:
-            faces.append((dep(fc), [(uu(v[0], v[1], f), v[2]) for v in fc], PEDRA_COR, [False] * len(fc)))
+            faces.append((dep(fc), [(cl(uu(v[0], v[1], f)), v[2]) for v in fc], PEDRA_COR, [False] * len(fc)))
+    _mi = {pi for it in w['itens'] for pi in it['pecas']}
+    for it in inst:   # móveis vizinhos: cinza claro, cortados na borda
+        for pi in it['pecas']:
+            if pi in _mi: continue
+            p_ = P[pi]; b = p_['bb']; sd_ = sorted(p_['dim'])
+            if sd_[1] < 50 or sd_[0] > 60 or prof_(b) > 1000: continue
+            u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
+            if u1_ <= umin_ - 300 or u0_ >= umax_ + 300: continue
+            for uq, nv, ft in p_['fq']:
+                faces.append((dep(uq), [(cl(uu(v[0], v[1], f)), v[2]) for v in uq], (0.86, 0.86, 0.86), ft))
     faces.sort(key=lambda t: -t[0]); faces = wf + faces
     return dict(w=w, f=f, faces=faces, boxes=boxes, umin=min(b['u0'] for b in boxes), umax=max(b['u1'] for b in boxes), zmax=max(b['z1'] for b in boxes))
 
@@ -754,7 +768,9 @@ def nichos(w):
         if len(g) >= 4 and max(ext) <= 1200 and hz >= 3: out.append(g)
     return out
 
-def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, **kw):
+def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, contexto=False, **kw):
+    # contexto=True (REGRA João): mostra o AMBIENTE em volta (móveis e pedra das paredes vizinhas, perto desta parede)
+    # para orientar; balões/listagem continuam só nos móveis da parede da vista.
     its = itens or [i for w in pids for i in PW[w]['itens']]
     U = list(its[0]['bb'])
     for i in its: U = geo.uniao(U, i['bb'])
@@ -769,8 +785,19 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, **kw
     up = (r[1] * fw[2] - r[2] * fw[1], r[2] * fw[0] - r[0] * fw[2], r[0] * fw[1] - r[1] * fw[0])
     dot = lambda a_, b_: a_[0] * b_[0] + a_[1] * b_[1] + a_[2] * b_[2]
     tc = ((U[0] + U[3]) / 2, (U[1] + U[4]) / 2, (U[2] + U[5]) / 2)
-    D = max(max(U[3] - U[0], U[4] - U[1], U[5] - U[2]) * 1.9, dmin)  # parede pequena: câmera não chega perto demais (sem distorção)
+    D = max(max(U[3] - U[0], U[4] - U[1], U[5] - U[2]) * 1.9, dmin)
+    if contexto and not itens and len(pids) == 1: D = max(D, 7000)   # com ambiente: câmera mais longe (menos distorção)  # parede pequena: câmera não chega perto demais (sem distorção)
     cam = (tc[0] - fw[0] * D, tc[1] - fw[1] * D, tc[2] - fw[2] * D)
+    ctx = contexto and not itens and len(pids) == 1
+    if ctx:
+        w0 = PW[pids[0]]; axd = 0 if f[0] else 1; axl = 1 - axd; sg = f[axd]
+        prof_ = lambda bb: min((w0['plano'] - bb[axd]) * sg, (w0['plano'] - bb[axd + 3]) * sg)
+        _tg = {pi for i in its for pi in i['pecas']}
+        def dentro_(bb, pi=None):
+            if not (prof_(bb) <= 1000 and bb[axl + 3] >= U[axl] - 1800 and bb[axl] <= U[axl + 3] + 1800): return False
+            if pi in _tg: return True
+            cz = sum(((bb[k_] + bb[k_ + 3]) / 2 - cam[k_]) * fw[k_] for k_ in range(3))
+            return cz > D * 0.8   # vizinho não fica entre a câmera e a parede
     cor = {}
     for i in inst:
         for pi in i['pecas']: cor[pi] = MADEIRA if i['tipo'] == 'comp' else (0.97, 0.97, 0.97)
@@ -779,16 +806,17 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, **kw
         b = p_['bb']
         sd_ = sorted(p_['dim'])
         if p_['i'] in AMB_I:
-            if all(b[k] <= E[k + 3] and b[k + 3] >= E[k] for k in range(3)):
+            if (dentro_(b, p_['i']) if ctx else all(b[k] <= E[k + 3] and b[k + 3] >= E[k] for k in range(3))):
                 for fc in p_['faces']: src.append((fc, PEDRA_COR, [False] * len(fc), 1, len(shell)))
                 shell.append(b)
             continue
         if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: 3D só com MDF (chapas); suportes, dobradiças, cabideiros, pés = fora
-        if all(b[k] >= E[k] for k in range(3)) and all(b[k + 3] <= E[k + 3] for k in range(3)):
+        if (dentro_(b, p_['i']) if ctx else (all(b[k] >= E[k] for k in range(3)) and all(b[k + 3] <= E[k + 3] for k in range(3)))):
             base = p_.get('rgb') or cor.get(p_['i'], (0.80, 0.80, 0.83))
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
             shell.append(b)
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
+    if ctx: R[axl] -= 1800; R[axl + 3] += 1800
     for b in paredes_recorte(R):
         for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
     L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L))
@@ -804,11 +832,17 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, **kw
     if not fcs: return
     fcs = _ordem_pecas(fcs, shell, cam)
     xs = [x for f_ in fcs for x, _ in f_[2]]; ys = [y for f_ in fcs for _, y in f_[2]]
+    if ctx:   # enquadra a parede da vista (+ um pouco do ambiente) e recorta o resto
+        Uq = list(U); Uq[axl] -= 700; Uq[axl + 3] += 700; Uq[2] = 0; Uq[5] += 150
+        cc = [pj((Uq[i0], Uq[1 + j0], Uq[2 + k0])) for i0 in (0, 3) for j0 in (0, 3) for k0 in (0, 3)]
+        cc = [c_ for c_ in cc if c_[2] > 50]
+        xs = [c_[0] for c_ in cc]; ys = [c_[1] for c_ in cc]
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
     k = min((rect.width - 16) / (x1 - x0), (rect.height - 16) / (y1 - y0))
     ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
     T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
-    sh = page.new_shape()
+    if ctx: _tmp = fz.open(); _tp = _tmp.new_page(width=page.rect.width, height=page.rect.height); sh = _tp.new_shape()
+    else: sh = page.new_shape()
     for gr_, dep_, q, c_, ft, _pc in fcs:
         Q = [T(x, y) for x, y in q]
         if area2(Q) < 0.1: continue
@@ -817,6 +851,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, **kw
             if f_: sh.draw_line(a_, b_)
         sh.finish(color=(0.2, 0.2, 0.2), width=0.35)
     sh.commit()
+    if ctx: page.show_pdf_page(rect, _tmp, 0, clip=rect)
     if letra:
         for i in its:
             nb = i.get('num_' + letra)
@@ -989,7 +1024,7 @@ m = len(com_img); a = AREA_IN
 _nc = 1 if m == 1 else 2 if m <= 4 else 3; _nr = -(-m // _nc)
 cel = [fz.Rect(a.x0 + (i % _nc) * a.width / _nc, a.y0 + (i // _nc) * a.height / _nr, a.x0 + (i % _nc + 1) * a.width / _nc, a.y0 + (i // _nc + 1) * a.height / _nr) for i in range(m)]
 for v, c in zip(com_img, cel):
-    (encaixa(p, v['img3d'], fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4)) if v.get('img3d') else render3d(p, fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4), v['paredes']))
+    (encaixa(p, v['img3d'], fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4)) if v.get('img3d') else render3d(p, fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4), v['paredes'], contexto=True))
     p.insert_text((c.x0 + 6, c.y0 + 11), v['titulo'], fontname='hebo', fontsize=10, color=RED)
 for j in range(1, _nc): p.draw_line((a.x0 + j * a.width / _nc, AREA.y0), (a.x0 + j * a.width / _nc, AREA.y1), color=PRETO, width=0.6)
 for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.x1, a.y0 + j * a.height / _nr), color=PRETO, width=0.6)
@@ -1002,7 +1037,7 @@ for v in V:
         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)
         if nao_achados and s_ is VW[0]:
             p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
-        render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'])
+        render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'], contexto=True)
         # REGRA (João): nicho pequeno/apertado ganha uma imagem só dele embaixo da tabela (continua na imagem grande)
         nis = [(w, c) for w in s_['paredes'] for c in nichos(PW[w])]
         if nis:

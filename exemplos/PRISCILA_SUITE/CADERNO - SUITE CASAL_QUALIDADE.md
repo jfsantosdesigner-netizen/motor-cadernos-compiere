@@ -1,6 +1,6 @@
 # QUALIDADE — PRISCILA / Suíte Casal (gerado por script)
 
-- APROVADO | nº de pranchas 14 = 4 + 5 listagens + 4 cotas + 1 divisor(es) de gaveta | divisória ripada: 1
+- APROVADO | nº de pranchas 15 = 4 + 5 listagens + 4 cotas + 1 divisor(es) de gaveta | divisória ripada: 1
 - INCERTO | itens localizados no DXF: 61/63
   - INCERTO: Gaveta Corrediça Telescópica 354x90x400 (não localizado; listado com * na vista A)
   - INCERTO: Frente de Gaveta Reta 406x130x18 (não localizado; listado com * na vista A)

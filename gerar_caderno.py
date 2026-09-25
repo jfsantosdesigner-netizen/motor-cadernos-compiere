@@ -510,13 +510,27 @@ def cotar_divisoria(page, G, ox, fy, k):
     alt = [b for b in bx if not _eh_ripa(b['it']) and (b['z1'] - b['z0']) >= 0.8 * ztop_]
     cadeia_h(page, [u0, u1] + [v for b in alt for v in (b['u0'], b['u1'])], fy + 14, fy + 2, X)
     cadeia_h(page, [u0, u1], Y(ztop_) - 14, Y(ztop_) - 2, X)
-    viz_ = [b for b in rip if b['z1'] - b['z0'] >= 300]
-    _m = len(viz_) // 2; viz_ = viz_[_m:] + viz_[:_m]   # amostra no MEIO da divisória (ripa comum, não a da ponta)
-    for a, c in zip(viz_, viz_[1:]):
-        if c['u0'] - a['u1'] > 20:
-            zm_ = (a['z0'] + a['z1']) / 2
-            cadeia_h(page, [a['u0'], a['u1'], c['u0']], Y(zm_), Y(zm_), X, fs=6, fundo=True)
-            break
+    # REGRA (v18b, João): o montador precisa da distância entre as ripas -> cota TODOS os vãos, em cada faixa de ripas
+    # (embaixo e em cima do painel), com as setas por dentro; a espessura da ripa sai uma vez só.
+    faixas = sorted({(round(b['z0'] / 50), round(b['z1'] / 50)) for b in rip if b['z1'] - b['z0'] >= 300})
+    feitas = []
+    for f0, f1 in faixas:
+        zc = (f0 + f1) * 25
+        if any(abs(zc - z_) < 250 for z_ in feitas): continue
+        estreitas = [b for b in bx if b['z0'] <= zc <= b['z1'] and (b['u1'] - b['u0']) <= 200]
+        ed = _uniq(sorted(v for b in estreitas for v in (b['u0'], b['u1'])), 1.0)
+        if len(ed) < 4: continue
+        feitas.append(zc); yl = Y(zc)
+        sh = page.new_shape(); sh.draw_line((X(ed[0]), yl), (X(ed[-1]), yl)); sh.finish(color=CR, width=0.4)
+        for u_ in ed: _tick(sh, X(u_), yl)
+        sh.finish(color=CR, width=0.5); sh.commit()
+        ripa_ok = False
+        for a_, c_ in zip(ed, ed[1:]):
+            t_ = fmt(c_ - a_); tw = fz.get_text_length(t_, 'helv', 5)
+            if (c_ - a_) >= 40 and (c_ - a_) * k >= tw + 1:
+                _txt(page, ((X(a_) + X(c_)) / 2 - tw / 2, yl - 1.5), t_, 5, fundo=True)
+            elif not ripa_ok and (c_ - a_) < 40:
+                _txt(page, (X(c_) + 1, yl + 6), t_, 5, fundo=True); ripa_ok = True
     hor = [b for b in bx if not _eh_ripa(b['it']) and (b['u1'] - b['u0']) >= 0.4 * (u1 - u0)]
     zs = [ZP, ztop_] + [v for b in hor for v in (b['z0'], b['z1'])]
     cadeia_v(page, zs, X(u1) + 16, X(u1) + 2, Y)
@@ -1263,9 +1277,11 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     for i in inst:
         for pi in i['pecas']: cor[pi] = MADEIRA if i['tipo'] == 'comp' else (0.97, 0.97, 0.97)
     src = []; shell = []; _pmat = {}; _pidx = {}
+    _iso = {pi for i in its for pi in i['pecas']} if kw.get('isolado') else None   # REGRA (v18): móvel complexo SOZINHO
     for p_ in P:
         b = p_['bb']
         sd_ = sorted(p_['dim'])
+        if _iso is not None and p_['i'] not in _iso: continue
         if p_['i'] in AMB_I or p_['i'] in ELETRO_I:
             if itens: continue   # detalhe (nicho/costas): só os móveis, sem pedra/eletros
             if (dentro_(b, p_['i']) if ctx else all(b[k] <= E[k + 3] and b[k + 3] >= E[k] for k in range(3))):
@@ -1308,7 +1324,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             b = p_['bb']
             if prof_(b) > 1300 or b[axl + 3] < U[axl] - 1800 or b[axl] > U[axl + 3] + 1800: continue
             for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
-    else:
+    elif _iso is None:
         if ctx: R[axl] -= 1800; R[axl + 3] += 1800
         for b in paredes_recorte(R):
             for fc in caixa_faces(b): src.append((fc, (0.94, 0.94, 0.94), [True] * 4, 0, -1))
@@ -1577,7 +1593,16 @@ for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.
 # por bloco: listagem de cada parede (frontal) e depois as cotas do bloco (paredes lado a lado)
 for v in V:
     GS = [geom_parede(PW[w]) for w in v['paredes']]
-    for s_ in v['subs']:
+    if v.get('divisoria'):
+        # REGRA (v18b, João): móvel complexo (divisória ripada em L) = SOZINHO, sem o ambiente, em DUAS imagens na
+        # diagonal (uma de cada lado do L), cada uma na sua prancha; tabela completa nas duas; um balão por tipo de peça.
+        its_ = PW[v['paredes'][0]]['itens']
+        for ang_ in (-38, 38):
+            n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {v['titulo']}")
+            tabela(p, v['linhas'], AREA_IN.x0, AREA_IN.y0)
+            render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), v['paredes'], letra=v['letra'], itens=its_,
+                     ang=ang_, elev=12, dmin=5200, margem=60, isolado=True)
+    for s_ in ([] if v.get('divisoria') else v['subs']):
         n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']}")
         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)
         if nao_achados and s_ is VW[0]:
@@ -1670,9 +1695,7 @@ for g_ in DIVISORES:
     yb = tabela(p, [(d, dm, '') for d, dm in chv], AREA_IN.x0, AREA_IN.y0)
     wid_ = g_[0].get('parede') if g_[0].get('parede') in PW else paredes[0]['id']
     for i in g_: i['parede'] = wid_
-    r3 = fz.Rect(AREA_IN.x0, yb + 12, AREA_IN.x0 + 248, AREA_IN.y1)
-    p.draw_rect(r3, color=PRETO, width=0.5)
-    render3d(p, fz.Rect(r3.x0 + 2, r3.y0 + 2, r3.x1 - 2, r3.y1 - 2), [wid_], letra=lt_, itens=g_, ang=25, elev=35, dmin=1600, margem=60)
+    # REGRA (v18b, João): sem 3D da gaveta (não mostrava o divisor); fica só a VISTA DE CIMA, grande
     x0_ = min(i['bb'][0] for i in g_); x1_ = max(i['bb'][3] for i in g_); y0_ = min(i['bb'][1] for i in g_); y1_ = max(i['bb'][4] for i in g_)
     ra = fz.Rect(AREA_IN.x0 + 262, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1 - 20)
     Sd, kd = next(((S_, MM / S_) for S_ in (2, 2.5, 5, 10, 15, 20) if (x1_ - x0_) * MM / S_ <= ra.width - 90 and (y1_ - y0_) * MM / S_ <= ra.height - 70), (20, MM / 20))
@@ -1723,7 +1746,7 @@ except Exception:
     import time as _t; cfg['saida'] = os.path.splitext(cfg['saida'])[0] + _t.strftime('_%H%M%S') + '.pdf'; doc.save(cfg['saida'], garbage=3, deflate=True)
 
 # ---------------- QUALIDADE (nível 1, por script) ----------------
-esperado = 4 + len(VW) + len(V) + len(DIVISORES)
+esperado = 4 + len(VW) + len(V) + len(DIVISORES) + len(DIVISORIAS)
 q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (gerado por script)", '',
      f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas" + (f" + {len(DIVISORES)} divisor(es) de gaveta" if DIVISORES else '') + (f" | divisória ripada: {len(DIVISORIAS)}" if DIVISORIAS else ''),
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]

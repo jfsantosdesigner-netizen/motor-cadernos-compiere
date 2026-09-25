@@ -1,7 +1,13 @@
-MOTOR DE CADERNOS COMPIERE - v18 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v19 (25/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v19 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados)
+ - MÓVEL COMPLEXO (divisória ripada): listagem com o móvel SOZINHO (sem o ambiente), em DUAS pranchas com imagem na
+   DIAGONAL (uma de cada lado do L), tabela completa nas duas, um balão por tipo de peça
+ - COTAS da divisória: TODOS os vãos entre as ripas, em cada faixa (embaixo, meio e em cima do painel), setas por dentro
+ - DIVISOR DE GAVETA: sem o 3D da gaveta (não mostrava o divisor); só a vista de cima com as cotas
 
 v18 (25/09/2026) - nuvem, aguardando aprovação do João (8 projetos regerados). REGRAS ESPECIAIS (só atuam quando o projeto tem)
  - DIVISÓRIA RIPADA (6+ ripas <= 30 x 60-200 mm, >= 500 de comprimento, na mesma faixa de profundidade): sai das paredes

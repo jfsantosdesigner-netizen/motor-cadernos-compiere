@@ -172,6 +172,28 @@ for nm_, q_ in _usadas.most_common(): print('   %-22s %4d pecas <- %s' % (nm_, q
 for nm_ in [k for k, v in _cc.items() if not v]: print('   SEM TEXTURA:', nm_)
 inst = geo.casar(P, linhas, None if cfg.get('listagem_pdf') else QT)
 paredes = geo.definir_paredes(inst, P)
+# REGRA: mesma parede com módulos de profundidades diferentes (ex.: armário raso 200 mm + balcão 600 mm)
+# = UMA parede só. Junta paredes do mesmo lado com planos a até 600 mm e trechos que se tocam/sobrepõem.
+def _juntar_paredes(paredes):
+    mudou = True
+    while mudou:
+        mudou = False
+        for a in paredes:
+            for b in paredes:
+                if a is b or a['key'] != b['key'] or abs(a['plano'] - b['plano']) > 600: continue
+                ax = 1 if FV[a['key']][0] else 0
+                ra = (min(i['bb'][ax] for i in a['itens']), max(i['bb'][ax + 3] for i in a['itens']))
+                rb = (min(i['bb'][ax] for i in b['itens']), max(i['bb'][ax + 3] for i in b['itens']))
+                if ra[1] < rb[0] - 100 or rb[1] < ra[0] - 100: continue
+                sg = FV[a['key']][1 - ax]
+                a['plano'] = max(a['plano'] * sg, b['plano'] * sg) * sg   # plano mais "no fundo"
+                a['itens'] += b['itens']; paredes.remove(b); mudou = True; break
+            if mudou: break
+    for w in paredes:
+        w['id'] = f"{w['key']}@{round(w['plano'])}"
+        for it in w['itens']: it['parede'] = w['id']
+    return paredes
+paredes = _juntar_paredes(paredes)
 # AMBIENTE (referência, NUNCA cotado): peças do DXF que não são móvel do XML nem parede/piso.
 # Hoje: PEDRA / bancada / rodabanca = placa horizontal (15–100 mm) na altura da bancada (700–1100 mm).
 # Desenhada com as faces reais do DXF (pedra em L sai em L).
@@ -181,7 +203,21 @@ AMB = [p_ for p_ in P if p_['i'] not in _usadas and p_['faces'] and 15 <= p_['di
        and max(p_['dim'][0], p_['dim'][1]) >= 500 and min(p_['dim'][0], p_['dim'][1]) >= 250 and 700 <= p_['bb'][2] <= 1100]
 AMB_I = {p_['i'] for p_ in AMB}
 # PAREDES REAIS do DXF (com vãos de janela/porta quando vierem): peça vertical, espessura 60–400 mm, não casada com móvel.
-PAR_DXF = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in {q['i'] for q in AMB} and 60 <= min(p_['dim'][0], p_['dim'][1]) <= 400
+# PAREDES EM PEÇA ÚNICA (alguns DXF trazem a sala inteira numa camada): usa as FACES reais, nunca a caixa.
+MALHA_PAR = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in AMB_I and p_['faces'] and p_['dim'][2] >= 1800
+             and max(p_['dim'][0], p_['dim'][1]) >= 1000 and min(p_['dim'][0], p_['dim'][1]) > 400]
+MALHA_I = {p_['i'] for p_ in MALHA_PAR}
+for p_ in MALHA_PAR: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
+# ELETROS / objetos do ambiente (geladeira, micro-ondas, forno, coifa, revestimento...): peça do DXF que não é móvel,
+# parede, pedra, piso nem forro. Só referência (faces reais, cinza médio), NUNCA cotado.
+ELETRO_COR = (0.72, 0.73, 0.76)
+ELETROS = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in AMB_I and p_['i'] not in MALHA_I and p_['faces']
+           and len(p_['faces']) >= 10 and sorted(p_['dim'])[0] >= 40 and sorted(p_['dim'])[1] >= 150 and max(p_['dim']) <= 2200 and p_['dim'][2] >= 100
+           and p_['bb'][5] <= 2300 and not (60 <= min(p_['dim'][0], p_['dim'][1]) <= 400 and p_['dim'][2] >= 1800)]
+ELETRO_I = {p_['i'] for p_ in ELETROS}
+for p_ in ELETROS: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
+print('AMBIENTE (eletros/objetos):', len(ELETROS), 'peças')
+PAR_DXF = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in {q['i'] for q in AMB} and p_['i'] not in ELETRO_I and 60 <= min(p_['dim'][0], p_['dim'][1]) <= 400
            and max(p_['dim'][0], p_['dim'][1]) >= 100 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) < 20000]
 for p_ in AMB: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
 print('AMBIENTE (pedra):', len(AMB), 'peças')
@@ -639,7 +675,7 @@ def render3d(page, rect, pids, letra=None, ang=15, elev=12, abertas=False):
 
 
 # ===== REGRAS FIXAS (João): LISTAGEM = 3D FRONTAL, PORTAS FECHADAS, COM PAREDES | COTAS = 2D FRONTAL, PORTAS ABERTAS, COM PAREDES, SÓ MÓDULOS + PRATELEIRAS =====
-PAREDES_PECAS = [p_ for p_ in P if p_['dim'][2] >= 2000 and min(p_['dim'][0], p_['dim'][1]) >= 80 and max(p_['dim'][0], p_['dim'][1]) >= 1000]
+PAREDES_PECAS = [p_ for p_ in P if p_['dim'][2] >= 2000 and 80 <= min(p_['dim'][0], p_['dim'][1]) <= 400 and max(p_['dim'][0], p_['dim'][1]) >= 1000]
 def caixa_faces(b):
     x0, y0, z0, x1, y1, z1 = b
     V_ = [(x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0), (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1)]
@@ -678,7 +714,13 @@ def geom_parede(w):
     wf = []
     for p_ in P:   # REGRA: parede atrás dos móveis na elevação 2D (só referência, não é cotada)
         b = p_['bb']
-        if not (min(p_['dim'][0], p_['dim'][1]) >= 80 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) >= 300 and p_['i'] not in _usadas): continue
+        if p_['i'] in MALHA_I:   # paredes em peça única: só as faces do fundo (até 300 mm atrás do plano da parede)
+            for fc in p_['faces']:
+                if max(abs(((w['plano'] - v[0] if f[0] else w['plano'] - v[1]) * (f[0] or f[1]))) for v in fc) > 300: continue
+                q_ = [(uu(v[0], v[1], f), v[2]) for v in fc]
+                wf.append((1e9, [(min(max(u_, umin_ - 150), umax_ + 150), z_) for u_, z_ in q_], (0.9, 0.9, 0.9), [False] * len(fc)))
+            continue
+        if not (80 <= min(p_['dim'][0], p_['dim'][1]) <= 400 and p_['dim'][2] >= 100 and max(p_['dim'][0], p_['dim'][1]) >= 300 and p_['i'] not in _usadas): continue
         if ((b[0] + b[3]) / 2 - Cc[0]) * f[0] + ((b[1] + b[4]) / 2 - Cc[1]) * f[1] < -150: continue
         u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
         if u1_ < umin_ - 400 or u0_ > umax_ + 400: continue
@@ -689,11 +731,12 @@ def geom_parede(w):
     axd = 0 if f[0] else 1; sg = f[axd]
     prof_ = lambda bb: min((w['plano'] - bb[axd]) * sg, (w['plano'] - bb[axd + 3]) * sg)
     cl = lambda u: min(max(u, umin_ - 300), umax_ + 300)
-    for p_ in AMB:   # pedra só aparece na parede onde ela está
+    for p_ in AMB + ELETROS:   # pedra/eletros só aparecem na parede onde estão
         b = p_['bb']; u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
         if prof_(b) > 1000 or u1_ < umin_ - 50 or u0_ > umax_ + 50: continue
+        c0_ = PEDRA_COR if p_['i'] in AMB_I else ELETRO_COR
         for fc in p_['faces']:
-            faces.append((dep(fc), [(cl(uu(v[0], v[1], f)), v[2]) for v in fc], PEDRA_COR, [False] * len(fc)))
+            faces.append((dep(fc), [(cl(uu(v[0], v[1], f)), v[2]) for v in fc], c0_, [False] * len(fc)))
     _mi = {pi for it in w['itens'] for pi in it['pecas']}
     for it in inst:   # móveis vizinhos: cinza claro, cortados na borda
         for pi in it['pecas']:
@@ -808,9 +851,10 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
     for p_ in P:
         b = p_['bb']
         sd_ = sorted(p_['dim'])
-        if p_['i'] in AMB_I:
+        if p_['i'] in AMB_I or p_['i'] in ELETRO_I:
             if (dentro_(b, p_['i']) if ctx else all(b[k] <= E[k + 3] and b[k + 3] >= E[k] for k in range(3))):
-                for fc in p_['faces']: src.append((fc, PEDRA_COR, [False] * len(fc), 1, len(shell)))
+                c0_ = PEDRA_COR if p_['i'] in AMB_I else ELETRO_COR
+                for fc in p_['faces']: src.append((fc, c0_, [False] * len(fc), 1, len(shell)))
                 shell.append(b)
             continue
         if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: 3D só com MDF (chapas); suportes, dobradiças, cabideiros, pés = fora
@@ -819,7 +863,14 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             for uq, nv, ft in p_['fq']: src.append((uq, base, ft, 1, len(shell)))
             shell.append(b)
     mg = kw.get('margem', 700); R = [U[0] - mg, U[1] - mg, 0 if mg >= 700 else U[2] - mg, U[3] + mg, U[4] + mg, U[5] + min(150, mg)]
-    if ctx and PAR_DXF:
+    if ctx and MALHA_PAR:
+        for p_ in MALHA_PAR:
+            for fc in p_['faces']:
+                c_ = [sum(v[k_] for v in fc) / len(fc) for k_ in range(3)]
+                if min((w0['plano'] - v[axd]) * sg for v in fc) > 1300: continue
+                if c_[axl] < U[axl] - 1800 or c_[axl] > U[axl + 3] + 1800: continue
+                src.append((fc, (0.94, 0.94, 0.94), [False] * len(fc), 0, -1))
+    if ctx and (PAR_DXF or MALHA_PAR):
         # REGRA (João): paredes reais do DXF que compõem o L (fundo e laterais), com janela/abertura; tira só as que ficam na frente
         for p_ in PAR_DXF:
             b = p_['bb']

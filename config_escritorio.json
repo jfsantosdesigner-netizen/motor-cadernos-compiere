@@ -1,0 +1,17 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "RAFAEL CLARET",
+  "ambiente": "Escritório",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\LAYOUT FIXO.pdf",
+ "contrato_fonte": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\COZINHA\\EXECUTIVO - COZINHA.pdf",
+ "xml": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\ESCRITÓRIO\\EXECUTIVO ESCRITÓRIO montado - 10000334.xml",
+ "xml_confere": true,
+ "dxf": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\ESCRITÓRIO\\Rafael Claret_Escritório.dxf",
+ "pecas_json": "C:\\CLAUDE\\motor v9\\escritorio_pecas.json",
+ "vistas": [],
+ "saida": "C:\\CLAUDE\\CLIENTES\\02_ORIGIN\\RAFAEL CLARET\\ESCRITORIO_CADERNO.pdf"
+}

@@ -1,0 +1,16 @@
+{
+  "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+  "dados": {"cliente": "RAFAEL CLARET", "ambiente": "Cozinha", "projetista": "JOÃO FELIPE SANTOS", "arquiteta": "FERNANDA"},
+  "layout": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\LAYOUT FIXO.pdf",
+  "contrato_fonte": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\COZINHA\\EXECUTIVO - COZINHA.pdf",
+  "xml": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\COZINHA\\EXECJUTIVO COZINHA - 10000334.xml",
+  "imagens": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\IMAGENS COZINHA RAFAEL.pdf",
+  "listagem_pdf": "C:\\CLAUDE\\PROJETO RAFAEL CLARET\\COZINHA\\EXECUTIVO - COZINHA.pdf",
+  "capa_img": 1,
+  "planta_img": 8,
+  "vistas": [
+    {"letra": "A", "img3d": 4, "orto": [5, 7], "listagem_pag": 4},
+    {"letra": "B", "img3d": 2, "orto": [6], "listagem_pag": 6}
+  ],
+  "saida": "C:\\CLAUDE\\CLIENTES\\02_ORIGIN\\RAFAEL CLARET\\COZINHA_CADERNO_v1.pdf"
+}

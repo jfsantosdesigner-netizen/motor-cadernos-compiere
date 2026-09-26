@@ -1,7 +1,16 @@
-MOTOR DE CADERNOS COMPIERE - v26 (25/09/2026)
+MOTOR DE CADERNOS COMPIERE - v27 (26/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v27 (26/09/2026) - nuvem, aguardando teste do João
+ - REGRA GERAL "TUDO QUE ESTÁ NA LISTA APARECE NÍTIDO": peça listada que NÃO aparece na imagem principal (escondida
+   embaixo/atrás/entre módulos) ou balões AMONTOADOS (3+ a até 22 pt) sai da imagem principal e vai para SUB-IMAGEM
+   "COMO FICA MONTADO" (só a peça + móveis encostados, sem ambiente; vista de baixo se estiver no alto). UMA sub-imagem
+   por prancha: a prancha é REPLICADA ("... - DETALHE n") com o 3D principal ao lado. Sem limite de pranchas.
+ - leitura guardada do DXF confere o hash: DXF mudou -> lê de novo
+ - removido o modo antigo que puxava listagem/imagens de PDF (listagem_pdf/imagens/capa_img) e os configs antigos
+ - gavetas/módulos montados com painéis e divisores de gaveta/talher continuam como condições gerais (v20/v26)
 
 v26 (25/09/2026) - nuvem, aguardando teste do João (9 projetos regerados; os 8 antigos iguais à v25)
  Projeto novo: PRISCILA COZINHA (exemplos/PRISCILA_COZINHA), comparado com o caderno feito à mão (só ideias)

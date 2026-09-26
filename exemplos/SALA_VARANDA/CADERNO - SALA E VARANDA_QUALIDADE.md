@@ -1,6 +1,6 @@
 # QUALIDADE — RAFAEL CLARET / Sala e Varanda (gerado por script)
 
-- APROVADO | nº de pranchas 11 = 4 + 4 listagens + 3 cotas
+- APROVADO | nº de pranchas 16 = 4 + 4 listagens + 3 cotas
 - INCERTO | itens localizados no DXF: 16/17
   - INCERTO: Fechamento 70x724x300 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto

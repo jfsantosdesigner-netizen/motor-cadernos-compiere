@@ -1,6 +1,6 @@
 # QUALIDADE — RAFAEL CLARET / Suíte Casal (gerado por script)
 
-- APROVADO | nº de pranchas 10 = 4 + 3 listagens + 3 cotas
+- APROVADO | nº de pranchas 11 = 4 + 3 listagens + 3 cotas
 - APROVADO | itens localizados no DXF: 12/12
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais

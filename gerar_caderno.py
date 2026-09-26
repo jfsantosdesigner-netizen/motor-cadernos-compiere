@@ -8,6 +8,8 @@ import pymupdf as fz, geo
 from motor_lista import listagem_de_pdf
 
 cfg = json.load(open(sys.argv[1], encoding='utf-8'))
+# REGRA (v27): PROIBIDO puxar listagem/imagens de PDF — tudo sai do XML + DXF
+for _k in ('listagem_pdf', 'imagens', 'capa_img'): cfg.pop(_k, None)
 AREA = fz.Rect(19, 142, 823, 577); IN = 7
 RED = (0.545, 0, 0); CR = (0.9, 0, 0); PRETO = (0, 0, 0)
 BRANCO = (1, 1, 1); MADEIRA = (0.80, 0.63, 0.42); CINZA = (0.93, 0.93, 0.93)
@@ -71,6 +73,11 @@ else:
     linhas = linhas_xml
 
 pj = cfg['pecas_json']
+# REGRA (v27): a leitura guardada do DXF só vale se o DXF for o MESMO (confere pelo hash); mudou -> lê de novo
+import hashlib as _hl
+_hx = _hl.md5(open(cfg['dxf'], 'rb').read()).hexdigest() if cfg.get('dxf') and os.path.exists(cfg['dxf']) else ''
+if os.path.exists(pj) and _hx and (not os.path.exists(pj + '.md5') or open(pj + '.md5').read().strip() != _hx): os.remove(pj)
+if not os.path.exists(pj) and _hx: open(pj + '.md5', 'w').write(_hx)
 if not os.path.exists(pj):
     subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), 'dxf_pecas.py'), cfg['dxf'], pj], check=True)
 P = geo.carregar(pj)
@@ -923,7 +930,7 @@ def encaixa(p, pno, alvo):
     t = fz.Rect(alvo.x0 + (alvo.width - w) / 2, alvo.y0 + (alvo.height - h) / 2, 0, 0); t.x1, t.y1 = t.x0 + w, t.y0 + h
     p.show_pdf_page(t, img, pno - 1, clip=r); return t
 
-def tabela(p, linhas, x0, y0, largura=248):
+def tabela(p, linhas, x0, y0, largura=248, nums=None):
     fs, lh = 7.2, 10.5
     cols = [x0, x0 + 24, x0 + 168, x0 + largura]
     sh = p.new_shape()
@@ -938,7 +945,7 @@ def tabela(p, linhas, x0, y0, largura=248):
         p.insert_text(((a + b) / 2 - fz.get_text_length(t, 'helv', fs) / 2, y0 + lh - 2.8), t, fontname='helv', fontsize=fs)
     for i, (d, dm, m) in enumerate(linhas, 1):
         y = y0 + lh * (i + 1) - 2.8
-        s = str(i) + m
+        s = str(nums[i - 1] if nums else i) + m
         p.insert_text(((cols[0] + cols[1]) / 2 - fz.get_text_length(s, 'helv', fs) / 2, y), s, fontname='helv', fontsize=fs)
         while fz.get_text_length(d, 'helv', fs) > cols[2] - cols[1] - 6: d = d[:-1]
         p.insert_text((cols[1] + 3, y), d, fontname='helv', fontsize=fs)
@@ -1748,6 +1755,7 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             _us = USINADOS.get(i['pecas'][0])
             if _us: c3[_us['al']] = (b[_us['al']] + _us['u'][0]) / 2   # painel usinado: balão na faixa cheia, não no vão
             t3 = pj(c3); cx, cy = T(t3[0], t3[1]); t_ = str(nb); wv = fz.get_text_length(t_, 'hebo', 7) + 4
+            if kw.get('posicoes') is not None: kw['posicoes'][id(i)] = (cx, cy)
             # REGRA: balões não ficam um em cima do outro -> desloca o novo e liga ao ponto com traço fino
             bx, by = cx, cy
             for tent in range(24):
@@ -2027,8 +2035,23 @@ for v in V:
             _ok = lambda c: any(id(i) in s_['ids'] for i in c)
             nis = [(w, c) for w, c in nis if _ok(c)]; cts = [(w, c, t) for w, c, t in cts if _ok(c)]
             mps = [(w, t_) for w, t_ in mps if _ok(t_['todos'])]; rds = [(w, r_) for w, r_ in rds if _ok(r_)]
-        render3d(p, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), s_['paredes'], letra=s_['letra'], contexto=True,
-                 sem_balao={id(i) for _, c in nis for i in c} | {id(i) for _, c, _ in cts for i in c} | {id(i) for _, t_ in mps for i in t_['todos']} | {id(i) for _, r_ in rds for i in r_})
+        _sb = {id(i) for _, c in nis for i in c} | {id(i) for _, c, _ in cts for i in c} | {id(i) for _, t_ in mps for i in t_['todos']} | {id(i) for _, r_ in rds for i in r_}
+        # REGRA GERAL (v27, João): TODA peça listada tem que aparecer NÍTIDA. Peça listada que NÃO aparece na imagem principal
+        # (escondida embaixo/atrás/entre módulos) ou balões AMONTOADOS (3+ a até 22 pt) -> a peça sai da imagem principal e vai
+        # para uma SUB-IMAGEM (só ela + os móveis encostados, sem ambiente), UMA por prancha: a prancha é replicada com o 3D
+        # principal ao lado. Sem limite de pranchas.
+        _RI = fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1)
+        _vis, _pos = set(), {}; _tm = fz.open(); _tpg = _tm.new_page(width=p.rect.width, height=p.rect.height)
+        render3d(_tpg, _RI, s_['paredes'], letra=s_['letra'], contexto=True, sem_balao=_sb, visiveis=_vis, posicoes=_pos)
+        _its = [i for w in s_['paredes'] for i in PW[w]['itens'] if i.get('num_' + s_['letra']) and id(i) not in _sb and (s_.get('ids') is None or id(i) in s_['ids'])]
+        _esc = [i for i in _its if i['tipo'] == 'comp' and _vis and not any(pi in _vis for pi in i['pecas'])]
+        _amt = [i for i in _its if i['tipo'] == 'comp' and id(i) in _pos and sum(1 for j in _its if id(j) in _pos and math.dist(_pos[id(i)], _pos[id(j)]) <= 22) >= 3]
+        _mov = list({id(i): i for i in _esc + _amt}.values()); _grp = []
+        for i in _mov:   # peças que se encostam (até 150 mm) = uma sub-imagem
+            g0 = next((g for g in _grp if any(geo.dist_caixas(i['bb'], j['bb']) <= 150 for j in g)), None)
+            (g0.append(i) if g0 is not None else _grp.append([i]))
+        _sb |= {id(i) for i in _mov}
+        render3d(p, _RI, s_['paredes'], letra=s_['letra'], contexto=True, sem_balao=_sb)
         nis = [(w, c, 'nicho') for w, c in nis] + cts + [(w, t_['mostra'], 'modulo') for w, t_ in mps] + [(w, r_, 'rodape') for w, r_ in rds]
         if nis:
             y0_ = (yb + 18 if not (nao_achados and s_ is VW[0]) else yb + 24)
@@ -2069,6 +2092,18 @@ for v in V:
                 r_dir = (fw_[1], -fw_[0])  # direção "direita" da câmera frontal
                 lado = (cm_ - cn_) * r_dir[ax_]
                 render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=c, ang=(-1 if lado > 0 else 1) * (28 if max(i['bb'][ax_ + 3] for i in c) - min(i['bb'][ax_] for i in c) < 1000 else 14), dmin=2200, margem=60)
+        for k_, g_ in enumerate(_grp, 1):   # sub-imagens (v27): uma por prancha, 3D principal replicado ao lado
+            n += 1; _extra += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']} - DETALHE {k_}")
+            _ns = sorted({i['num_' + s_['letra']] for i in g_})
+            yb = tabela(p, [s_['linhas'][k - 1] for k in _ns], AREA_IN.x0, AREA_IN.y0, nums=_ns)
+            render3d(p, _RI, s_['paredes'], letra=s_['letra'], contexto=True, sem_balao=_sb)
+            _ctx = [o for w in s_['paredes'] for o in PW[w]['itens'] if o not in g_ and any(geo.dist_caixas(o['bb'], j['bb']) <= 30 for j in g_)]
+            r_ = fz.Rect(AREA_IN.x0, yb + 10, AREA_IN.x0 + 248, AREA_IN.y1)
+            p.draw_rect(r_, color=PRETO, width=0.5)
+            p.insert_text((r_.x0 + 4, r_.y0 + 10), 'COMO FICA MONTADO', fontname='hebo', fontsize=7.5, color=RED)
+            zc_ = sum((i['bb'][2] + i['bb'][5]) / 2 for i in g_) / len(g_)
+            render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), s_['paredes'], letra=s_['letra'], itens=g_ + _ctx, ang=30,
+                     elev=-28 if zc_ > 1400 else 32, dmin=2200, margem=60, isolado=True, sem_balao={id(o) for o in _ctx})
     # cotas
     n += 1; p = nova_prancha(doc, n, f"MEDIDAS E ALTURAS - {v['titulo']}")
     nc = len(GS); zm = max(G['ztop'] for G in GS)

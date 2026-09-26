@@ -1,6 +1,6 @@
 # QUALIDADE — PRISCILA / Cozinha (gerado por script)
 
-- APROVADO | nº de pranchas 14 = 4 + 4 listagens + 3 cotas + 1 divisor(es) de gaveta
+- APROVADO | nº de pranchas 18 = 4 + 4 listagens + 3 cotas + 1 divisor(es) de gaveta
 - INCERTO | itens localizados no DXF: 50/52
   - INCERTO: QUADRO EM C SUPERIOR 20 X 20 20 X 1024 X 318 PRETO ACETINADO 20x1024x318 (não localizado; listado com * na vista A)
   - INCERTO: SUPORTE FIXAÇÃO METALON 36 X 18 PRETO ACETINADO 36x2x18 (não localizado; listado com * na vista A)

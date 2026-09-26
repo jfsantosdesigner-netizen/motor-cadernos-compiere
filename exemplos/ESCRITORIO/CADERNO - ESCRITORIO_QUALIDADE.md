@@ -1,6 +1,6 @@
 # QUALIDADE — RAFAEL CLARET / Escritório (gerado por script)
 
-- APROVADO | nº de pranchas 6 = 4 + 1 listagens + 1 cotas
+- APROVADO | nº de pranchas 7 = 4 + 1 listagens + 1 cotas
 - APROVADO | itens localizados no DXF: 7/7
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais

@@ -162,19 +162,29 @@ try:
     import numpy as _np
 except Exception:
     _Im = None
-_TXD = os.path.join(_MD, 'texturas'); _txc = {}
+_TXD = os.path.join(_MD, 'texturas')              # ASSET oficial, versionado: o motor SÓ LÊ, nunca escreve
+_TXC = os.path.join(_MD, '_cache_texturas')       # miniatura derivada do MATERIAIS (no .gitignore)
+_txc = {}
 def textura(nome):
+    # REGRA (v32, João): a pasta texturas/ é ENTRADA do motor, não cache. Ela nunca é reescrita pela
+    # rodada — assim os binários ficam idênticos em qualquer máquina, o 'git status' para de acusar
+    # imagem modificada e rodada fria e rodada quente usam exatamente os mesmos inputs visuais.
+    # Miniatura gerada a partir do MATERIAIS vai para _cache_texturas/, fora do versionamento.
     if _Im is None or not nome: return None
     if nome in _txc: return _txc[nome]
     im = None; ref = (_cc.get(nome) or [None, None])[1]
     if ref:
-        fn = ref.replace('\\', '/').split('/')[-1].lower(); loc = os.path.join(_TXD, fn)
+        fn = ref.replace('\\', '/').split('/')[-1].lower()
+        ofi = os.path.join(_TXD, fn)              # asset oficial
+        cch = os.path.join(_TXC, fn)              # cache derivado
         try:
-            if os.path.exists(loc): im = _Im.open(loc).convert('RGB')
+            if os.path.exists(ofi): im = _Im.open(ofi).convert('RGB')
+            elif os.path.exists(cch): im = _Im.open(cch).convert('RGB')
             else:
                 full = ref if os.path.exists(ref) else os.path.join(_MAT, ref.split('MATERIAIS', 1)[-1].lstrip('/\\'))
                 if os.path.exists(full):
-                    im = _Im.open(full).convert('RGB'); im.thumbnail((1024, 1024)); os.makedirs(_TXD, exist_ok=True); im.save(loc, quality=82)
+                    im = _Im.open(full).convert('RGB'); im.thumbnail((1024, 1024))
+                    os.makedirs(_TXC, exist_ok=True); im.save(cch, quality=82)
         except Exception: im = None
     _txc[nome] = im; return im
 _dm = {}; _ord = {}
@@ -205,7 +215,7 @@ for p_ in P:
         nm_ = c_.most_common(1)[0][0]; rgb = cor_material(nm_)
         if rgb: p_['rgb'] = rgb; p_['mat'] = nm_; _nc += 1; _usadas[nm_] += 1
 print('CORES: %d pecas coloridas pelo MATERIAIS (medidas no XML: %d)' % (_nc, len(_dm)))
-TEX_FALTA = [m_ for m_ in _usadas if _cc.get(m_) and not os.path.exists(os.path.join(_MD, 'texturas', _cc[m_][1].replace('\\', '/').split('/')[-1].lower()))]
+TEX_FALTA = [m_ for m_ in _usadas if _cc.get(m_) and not any(os.path.exists(os.path.join(d_, _cc[m_][1].replace('\\', '/').split('/')[-1].lower())) for d_ in (_TXD, _TXC))]
 for nm_, q_ in _usadas.most_common(): print('   %-22s %4d pecas <- %s' % (nm_, q_, os.path.relpath(_cc[nm_][1], _MAT)))
 _todas_mats = {r_ for c_ in _dm.values() for r_ in c_}
 for nm_ in [k for k, v in _cc.items() if not v and k in _todas_mats]: print('   SEM TEXTURA:', nm_)

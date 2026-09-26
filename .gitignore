@@ -5,3 +5,6 @@ MATERIAIS/
 BIBLIOTECA_PROMOB/
 _reduzir_*.log
 *.md5
+
+# v32: miniaturas derivadas do MATERIAIS. A pasta texturas/ e ASSET versionado e nunca e reescrita.
+_cache_texturas/

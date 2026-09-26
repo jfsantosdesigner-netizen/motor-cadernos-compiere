@@ -2149,6 +2149,22 @@ for v in V:
             p.draw_rect(r_, color=PRETO, width=0.5)
             p.insert_text((r_.x0 + 4, r_.y0 + 10), 'COMO FICA MONTADO', fontname='hebo', fontsize=7.5, color=RED)
             zc_ = sum((i['bb'][2] + i['bb'][5]) / 2 for i in g_) / len(g_)
+            # v29: peça escondida ATRÁS DE PAINEL (sarrafo/tamponamento de fixação) = mostra o painel onde ela é fixada, visto por TRÁS
+            _pn = []
+            for w in s_['paredes']:
+                f_ = FV[PW[w]['key']]
+                for o in PW[w]['itens']:
+                    if o in g_ or o in _pn or min(parse_dim_(o['dim'])) > 25: continue
+                    ou0, oz0, ou1, oz1 = geo.caixa_elev(o['bb'], f_)
+                    for j in g_:
+                        ju0, jz0, ju1, jz1 = geo.caixa_elev(j['bb'], f_)
+                        if geo.dist_caixas(o["bb"], j["bb"]) <= 5 and min(ou1, ju1) - max(ou0, ju0) > 0.3 * (ju1 - ju0) and min(oz1, jz1) - max(oz0, jz0) > 0.5 * (jz1 - jz0):
+                            _pn.append(o); break
+            if _pn and all(any(geo.dist_caixas(o['bb'], j['bb']) <= 5 for o in _pn) for j in g_):
+                p.insert_text((r_.x0 + 4, r_.y0 + 20), 'VISTA POR TRÁS DO PAINEL', fontname='helv', fontsize=6.5, color=PRETO)
+                render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 24, r_.x1 - 2, r_.y1 - 2), s_['paredes'], letra=s_['letra'], itens=g_ + _pn, ang=180 + 25, elev=15,
+                         dmin=2600, margem=60, isolado=True, costas=True, sem_balao={id(o) for o in _pn})
+                continue
             render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), s_['paredes'], letra=s_['letra'], itens=g_ + _ctx, ang=30,
                      elev=40 if zc_ > 1200 else (-28 if zc_ < 400 else 32), dmin=2200, margem=60, isolado=True, sem_portas=True, sem_balao={id(o) for o in _ctx})   # v28: alto = de cima p/ baixo; embaixo = de baixo p/ cima
         for k2_, (w, c, tp_) in enumerate(_det_extra, len(_grp) + 1):

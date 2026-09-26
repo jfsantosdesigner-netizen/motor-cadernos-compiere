@@ -1,0 +1,19 @@
+{
+ "tipo_caderno": "MONTAGEM E INSTALAÇÃO",
+ "dados": {
+  "cliente": "GUILHERME CESAR",
+  "ambiente": "Suite Casal",
+  "projetista": "JOÃO FELIPE SANTOS",
+  "arquiteta": "FERNANDA"
+ },
+ "layout": "assets/LAYOUT_FIXO.pdf",
+ "contrato_fonte": "assets/CONTRATO.pdf",
+ "logo": "assets/LOGO.png",
+ "xml": "exemplos/GUILHERME_SUITE/EXECUTIVO_SUITE_CASAL.xml",
+ "xml_confere": true,
+ "dxf": "exemplos/GUILHERME_SUITE/SUITE_CASAL.dxf",
+ "pecas_json": "exemplos/GUILHERME_SUITE/_pecas_dxf.json",
+ "vistas": [],
+ "materiais": "MATERIAIS",
+ "saida": "exemplos/GUILHERME_SUITE/CADERNO - SUITE CASAL.pdf"
+}

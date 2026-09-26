@@ -1,6 +1,6 @@
 # QUALIDADE — GUILHERME CESAR / Suite Casal (gerado por script)
 
-- APROVADO | nº de pranchas 13 = 4 + 2 listagens + 2 cotas
+- APROVADO | nº de pranchas 10 = 4 + 2 listagens + 2 cotas
 - INCERTO | itens localizados no DXF: 12/17
   - INCERTO: Gaveta Corrediça Telescópica 601x100x350 (não localizado; listado com * na vista A)
   - INCERTO: Fechamento 70x2286x580 (não localizado; listado com * na vista A)
@@ -9,7 +9,7 @@
   - INCERTO: Frente Sapateira 564,5x70x18 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais
-- VISTA A: paredes y-@-4180 | 15 linhas de listagem | CONDIÇÕES -> 2 detalhe(s) de módulo pequeno
+- VISTA A: paredes y-@-4180 | 15 linhas de listagem | CONDIÇÕES -> 2 detalhe(s) de módulo pequeno, 4 peça(s) atrás de painel no detalhe das costas
 - VISTA B: paredes x-@150 | 2 linhas de listagem
   A1: Balcão Inferior 664x165x380
   A2: Balcão Inferior 753x165x380

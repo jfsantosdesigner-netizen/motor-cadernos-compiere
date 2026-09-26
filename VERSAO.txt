@@ -1,7 +1,11 @@
-MOTOR DE CADERNOS COMPIERE - v28 (26/09/2026)
+MOTOR DE CADERNOS COMPIERE - v29 (26/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v29 (26/09/2026) - erros da v28 achados nos projetos reais do Guilherme Cesar
+ - CORREÇÃO: peça com medida+cor do XML (porta/frente) NUNCA é "geometria" (v28 pintava as portas de cinza por cima)
+ - VOLTA a regra da v21: peça atrás de painel (sarrafo/afastador) = DETALHE - COSTAS visto por trás, com o painel, sempre
 
 v28 (26/09/2026) - 25 comentários do João na página (regras gerais, valem para todos os projetos)
  - SUB-IMAGEM: peça no alto = vista DE CIMA p/ baixo; peça embaixo = de baixo p/ cima; só os MÓDULOS onde a peça está;

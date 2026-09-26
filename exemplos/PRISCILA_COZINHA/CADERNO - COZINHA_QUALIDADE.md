@@ -9,7 +9,7 @@
 - VISTA A: paredes x+@10301 | 27 linhas de listagem
 - VISTA B: paredes y+@-100b | 12 linhas de listagem
 - VISTA C: paredes y+@-100a | 3 linhas de listagem
-- PAINEL COM NICHOS: paredes BLOCO@-1593 | 7 linhas de listagem
+- PAINEL COM NICHOS: paredes BLOCO@-1593 | 7 linhas de listagem | CONDIÇÕES -> 10 peça(s) atrás de painel no detalhe das costas
   A1: Armário Despenseiro 400x2390x580
   A2: Armário Superior 756x586x580
   A3: Armário Superior 870x490x580

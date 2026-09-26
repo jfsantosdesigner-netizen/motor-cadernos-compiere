@@ -1,12 +1,12 @@
 # QUALIDADE — RAFAEL CLARET / Sala e Varanda (gerado por script)
 
-- APROVADO | nº de pranchas 13 = 4 + 2 listagens + 2 cotas
+- APROVADO | nº de pranchas 9 = 4 + 2 listagens + 2 cotas
 - INCERTO | itens localizados no DXF: 16/17
   - INCERTO: Fechamento 70x724x300 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais
-- VISTA A: paredes x-@4151 | 11 linhas de listagem | CONDIÇÕES -> rodapé/base (3 peças) em detalhe
-- VISTA B: paredes x+@6771 | 6 linhas de listagem
+- VISTA A: paredes x-@4151 | 11 linhas de listagem | CONDIÇÕES -> rodapé/base (3 peças) em detalhe, 4 peça(s) atrás de painel no detalhe das costas
+- VISTA B: paredes x+@6771 | 6 linhas de listagem | CONDIÇÕES -> 5 peça(s) atrás de painel no detalhe das costas
   A1: Balcão Inferior 1570x430x350
   A2: Painel Freijo Puro MDF 332x18x100
   A3: Painel Freijo Puro MDF 1570x18x100

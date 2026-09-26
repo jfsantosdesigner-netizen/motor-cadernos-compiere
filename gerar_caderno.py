@@ -279,9 +279,10 @@ def _eletro_ok(p_):
 ELETROS = [p_ for p_ in ELETROS if _eletro_ok(p_)]
 # REGRA (v28, João): móvel feito com GEOMETRIA no Promob (vem no DXF, não no XML) que ENCOSTA num móvel do projeto
 # = referência na imagem (como a pedra): forma real, sem listagem/balão/cota.
+# v29: peça com medida+cor do XML é PEÇA DE MÓVEL (porta/frente), nunca geometria.
 _ja_e = {q['i'] for q in ELETROS}
 _inst_bb = [i['bb'] for i in inst]
-ELETROS += [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in AMB_I and p_['i'] not in MALHA_I and p_['i'] not in _ja_e and p_['faces']
+ELETROS += [p_ for p_ in P if not p_.get('mat') and p_['i'] not in _usadas and p_['i'] not in AMB_I and p_['i'] not in MALHA_I and p_['i'] not in _ja_e and p_['faces']
             and sorted(p_['dim'])[0] >= 15 and sorted(p_['dim'])[1] >= 100 and p_['bb'][5] <= 1300 and p_['bb'][2] >= -5
             and not (p_['dim'][2] < 60 and min(p_['dim'][0], p_['dim'][1]) > 1000) and not (p_['bb'][2] < 50 and p_['bb'][5] < 250)
             and any(geo.dist_caixas(p_['bb'], b_) <= 20 for b_ in _inst_bb)]
@@ -1433,8 +1434,7 @@ def pequenos(w):
     return out
 
 def costas_paineis(w):
-    return []   # v28: peça escondida vai para a sub-imagem da regra geral (v27)
-    if not poluida(w): return []
+    # v29: volta a regra da v21 (peça atrás de painel = detalhe visto por trás, com o painel), sempre
     f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]
     perto = lambda bb: min(bb[ad] * sg_, bb[ad + 3] * sg_); longe = lambda bb: max(bb[ad] * sg_, bb[ad + 3] * sg_)
     grandes = [i for i in w['itens'] if i['tipo'] == 'comp' and (i['bb'][ad + 3] - i['bb'][ad]) <= 30
@@ -2149,22 +2149,6 @@ for v in V:
             p.draw_rect(r_, color=PRETO, width=0.5)
             p.insert_text((r_.x0 + 4, r_.y0 + 10), 'COMO FICA MONTADO', fontname='hebo', fontsize=7.5, color=RED)
             zc_ = sum((i['bb'][2] + i['bb'][5]) / 2 for i in g_) / len(g_)
-            # v29: peça escondida ATRÁS DE PAINEL (sarrafo/tamponamento de fixação) = mostra o painel onde ela é fixada, visto por TRÁS
-            _pn = []
-            for w in s_['paredes']:
-                f_ = FV[PW[w]['key']]
-                for o in PW[w]['itens']:
-                    if o in g_ or o in _pn or min(parse_dim_(o['dim'])) > 25: continue
-                    ou0, oz0, ou1, oz1 = geo.caixa_elev(o['bb'], f_)
-                    for j in g_:
-                        ju0, jz0, ju1, jz1 = geo.caixa_elev(j['bb'], f_)
-                        if geo.dist_caixas(o["bb"], j["bb"]) <= 5 and min(ou1, ju1) - max(ou0, ju0) > 0.3 * (ju1 - ju0) and min(oz1, jz1) - max(oz0, jz0) > 0.5 * (jz1 - jz0):
-                            _pn.append(o); break
-            if _pn and all(any(geo.dist_caixas(o['bb'], j['bb']) <= 5 for o in _pn) for j in g_):
-                p.insert_text((r_.x0 + 4, r_.y0 + 20), 'VISTA POR TRÁS DO PAINEL', fontname='helv', fontsize=6.5, color=PRETO)
-                render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 24, r_.x1 - 2, r_.y1 - 2), s_['paredes'], letra=s_['letra'], itens=g_ + _pn, ang=180 + 25, elev=15,
-                         dmin=2600, margem=60, isolado=True, costas=True, sem_balao={id(o) for o in _pn})
-                continue
             render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), s_['paredes'], letra=s_['letra'], itens=g_ + _ctx, ang=30,
                      elev=40 if zc_ > 1200 else (-28 if zc_ < 400 else 32), dmin=2200, margem=60, isolado=True, sem_portas=True, sem_balao={id(o) for o in _ctx})   # v28: alto = de cima p/ baixo; embaixo = de baixo p/ cima
         for k2_, (w, c, tp_) in enumerate(_det_extra, len(_grp) + 1):

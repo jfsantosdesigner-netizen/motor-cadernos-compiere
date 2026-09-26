@@ -5,7 +5,7 @@ from collections import OrderedDict
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.stdout.reconfigure(encoding='utf-8')
 import pymupdf as fz, geo
-from motor_lista import listagem_de_pdf
+
 
 cfg = json.load(open(sys.argv[1], encoding='utf-8'))
 # REGRA (v27): PROIBIDO puxar listagem/imagens de PDF — tudo sai do XML + DXF
@@ -64,13 +64,7 @@ def ler_xml(path):
     return list(mods) + list(comps), cores, list(pux), list(ferr)
 
 linhas_xml, cores, puxs, ferrs = ler_xml(cfg['xml'])
-if cfg.get('listagem_pdf'):
-    linhas = []
-    for pg in cfg['listagem_pags']:
-        for d, dm, _ in listagem_de_pdf(cfg['listagem_pdf'], pg):
-            if (d, dm) not in linhas: linhas.append((d, dm))
-else:
-    linhas = linhas_xml
+linhas = linhas_xml
 
 pj = cfg['pecas_json']
 # REGRA (v27): a leitura guardada do DXF só vale se o DXF for o MESMO (confere pelo hash); mudou -> lê de novo
@@ -215,7 +209,7 @@ TEX_FALTA = [m_ for m_ in _usadas if _cc.get(m_) and not os.path.exists(os.path.
 for nm_, q_ in _usadas.most_common(): print('   %-22s %4d pecas <- %s' % (nm_, q_, os.path.relpath(_cc[nm_][1], _MAT)))
 _todas_mats = {r_ for c_ in _dm.values() for r_ in c_}
 for nm_ in [k for k, v in _cc.items() if not v and k in _todas_mats]: print('   SEM TEXTURA:', nm_)
-inst = geo.casar(P, linhas, None if cfg.get('listagem_pdf') else QT)
+inst = geo.casar(P, linhas, QT)
 paredes = geo.definir_paredes(inst, P)
 # REGRA: mesma parede com módulos de profundidades diferentes (ex.: armário raso 200 mm + balcão 600 mm)
 # = UMA parede só. Junta paredes do mesmo lado com planos a até 600 mm e trechos que se tocam/sobrepõem.
@@ -622,46 +616,8 @@ if nao_achados:
 # ---------------- geometria de elevação ----------------
 def uu(x, y, f): return x * f[1] - y * f[0]
 
-def geom_parede(w):
-    f = FV[w['key']]; faces = []; boxes = []
-    for it in w['itens']:
-        cor = MADEIRA if it['tipo'] == 'comp' else BRANCO
-        for pi in it['pecas']:
-            for fc in P[pi]['faces']:
-                pts = [(uu(v[0], v[1], f), v[2]) for v in fc]
-                dep = sum(v[0] * f[0] + v[1] * f[1] for v in fc) / 4
-                faces.append((dep, pts, cor))
-        u0, z0, u1, z1 = geo.caixa_elev(it['bb'], f)
-        boxes.append(dict(it=it, u0=u0, z0=z0, u1=u1, z1=z1))
-    faces.sort(key=lambda t: -t[0])
-    umin = min(b['u0'] for b in boxes); umax = max(b['u1'] for b in boxes); zmax = max(b['z1'] for b in boxes)
-    return dict(w=w, f=f, faces=faces, boxes=boxes, umin=umin, umax=umax, zmax=zmax)
-
 def area2(pts):
     return abs(sum(pts[i][0] * pts[i - 1][1] - pts[i - 1][0] * pts[i][1] for i in range(len(pts)))) / 2
-
-def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
-    X = lambda u: ox + (u - G['umin']) * k
-    Y = lambda z: fy - z * k
-    sh = page.new_shape()
-    for dep, pts, cor in G['faces']:
-        q = [(X(u), Y(z)) for u, z in pts]
-        if area2(q) < 0.15: continue
-        sh.draw_polyline(q + [q[0]]); sh.finish(color=cor, fill=cor, width=0.45, closePath=True)
-        for a_, b_ in zip(q, q[1:] + q[:1]):
-            if abs(a_[0] - b_[0]) < 0.35 or abs(a_[1] - b_[1]) < 0.35: sh.draw_line(a_, b_)
-        sh.finish(color=(0.2, 0.2, 0.2), width=0.3)
-    sh.draw_line((X(G.get('vmin', G['umin'])) - 6, fy), (X(G.get('vmax', G['umax'])) + 6, fy)); sh.finish(color=PRETO, width=0.9)
-    sh.commit()
-    if baloes:
-        for b in G['boxes']:
-            n = b['it'].get('num_' + letra)
-            if not n: continue
-            cx, cy = X((b['u0'] + b['u1']) / 2), Y((b['z0'] + b['z1']) / 2)
-            s = str(n); wv = fz.get_text_length(s, 'hebo', 6.5) + 4
-            r = fz.Rect(cx - wv / 2, cy - 5, cx + wv / 2, cy + 5)
-            page.draw_rect(r, color=PRETO, fill=(1, 1, 0), width=0.4)
-            page.insert_text((cx - wv / 2 + 2, cy + 2.4), s, fontname='hebo', fontsize=6.5)
 
 def _tick(sh, x, y):
     sh.draw_line((x - 2.2, y + 2.2), (x + 2.2, y - 2.2))
@@ -827,8 +783,6 @@ def cotar(page, G, ox, fy, k):
             zt = (gaps[-1][1] if gaps else b['z1']) - 70
             cadeia_h(page, [cu0, cu1], Y(zt), Y(zt), X, fs=5.5, fundo=True)
 
-# REGRA (v16, João): VISTA LATERAL do móvel na MESMA prancha da cota frontal (página dividida: frontal à esquerda,
-# lateral à direita, mesma escala). Mostra a PROFUNDIDADE (a partir da parede) e as alturas; parede do fundo em cinza.
 def _desenho2d(page, faces, XY):
     """REGRA (v16, João): cotas 2D (frontal e lateral) com as MESMAS cores e TEXTURAS do 3D (madeirado com veio).
     Chapa 1830 x 2750 mm, veio no sentido do comprimento da peça. Sem Pillow/textura = cor lisa (vetor)."""
@@ -878,59 +832,8 @@ def _desenho2d(page, faces, XY):
     bio = _io.BytesIO(); img.save(bio, format='PNG', optimize=True)
     page.insert_image(R, stream=bio.getvalue())
 
-def geom_lateral(w):
-    f = FV[w['key']]; axd = 0 if f[0] else 1; sg = f[axd]; pl = w['plano']
-    H = lambda v: (pl - v[axd]) * sg          # profundidade: 0 na parede, cresce para dentro do ambiente
-    faces = []; boxes = []
-    for it in w['itens']:
-        cor = MADEIRA if it['tipo'] == 'comp' else BRANCO
-        for pi in it['pecas']:
-            sd_ = sorted(P[pi]['dim'])
-            if sd_[1] < 50 or sd_[0] > 60: continue
-            for uq, nv, ft in P[pi]['fq']:
-                faces.append((sum(uu(v[0], v[1], f) for v in uq) / len(uq), [(H(v), v[2]) for v in uq], P[pi].get('rgb', cor), ft, P[pi].get('mat'), pi))
-        b = it['bb']; h0, h1 = sorted((H((b[0], b[1])), H((b[3], b[4]))))
-        boxes.append(dict(it=it, h0=max(h0, 0), h1=h1, z0=b[2], z1=b[5]))
-    faces.sort(key=lambda t: t[0])            # vista pelo lado de u maior: o mais perto por último
-    hmax = max(b['h1'] for b in boxes); zmax = max(b['z1'] for b in boxes)
-    return dict(faces=faces, boxes=boxes, hmax=hmax, zmax=zmax, esp=150, divisoria=bool(w.get('divisoria')), bloco=w.get('bloco'))
-
-def desenhar_lateral(page, L, ox, fy, k, ztop):
-    X = lambda h: ox + h * k
-    Y = lambda z: fy - z * k
-    sh = page.new_shape()
-    sh.draw_rect(fz.Rect(X(-L['esp']), Y(ztop), X(0), fy)); sh.finish(color=(0.2, 0.2, 0.2), fill=(0.9, 0.9, 0.9), width=0.4)
-    sh.commit()
-    _desenho2d(page, L['faces'], lambda h, z: (X(h), Y(z)))
-    sh = page.new_shape()
-    sh.draw_line((X(-L['esp']) - 6, fy), (X(L['hmax'] + 300), fy)); sh.finish(color=PRETO, width=0.9)
-    sh.commit()
-
-def cotar_lateral(page, L, ox, fy, k):
-    X = lambda h: ox + h * k
-    Y = lambda z: fy - z * k
-    if L.get('bloco'):   # REGRA (v26): bloco de painéis de lado: profundidade do painel e do painel do teto + alturas
-        bx = L['boxes']; ver = [b for b in bx if b['z1'] - b['z0'] >= 800]; dei = [b for b in bx if b['h1'] - b['h0'] >= 500]
-        hv = max([b['h1'] for b in ver] or [0]); zt = L['zmax']
-        cadeia_h(page, [0, hv, L['hmax']], Y(zt) - 13, Y(zt) - 2, X)
-        if hv > 1: cadeia_h(page, [0, L['hmax']], Y(zt) - 26, Y(zt) - 2, X)
-        zs = [ZP, zt] + [min(b['z0'] for b in ver)] * bool(ver) + [v for b in dei for v in (b['z0'], b['z1'])]
-        xr = X(L['hmax']); cadeia_v(page, zs, xr + 14, xr + 2, Y); return
-    if L.get('divisoria'):   # divisória: só profundidade total e altura total
-        cadeia_h(page, [0, L['hmax']], fy + 13, fy + 2, X)
-        xr = X(L['hmax']); cadeia_v(page, [ZP, L['zmax']], xr + 14, xr + 2, Y); return
-    mb = [b for b in L['boxes'] if b['it']['tipo'] == 'mod'] or L['boxes']
-    inf = [b for b in mb if b['z0'] < CORTE]; sup = [b for b in mb if b['z1'] > CORTE]
-    if inf: cadeia_h(page, [0] + [v for b in inf for v in (b['h0'], b['h1'])], fy + 13, fy + 2, X)
-    if sup:
-        yt = Y(max(b['z1'] for b in sup))
-        cadeia_h(page, [0] + [v for b in sup for v in (b['h0'], b['h1'])], yt - 13, yt - 2, X)
-    xr = X(max(b['h1'] for b in mb))
-    cadeia_v(page, [ZP] + [v for b in mb for v in (b['z0'], b['z1'])], xr + 14, xr + 2, Y)
-
 # ---------------- pranchas ----------------
 lay = fz.open(cfg['layout'])
-img = fz.open(cfg['imagens']) if cfg.get('imagens') else None
 def nova_prancha(doc, n, titulo):
     p = doc.new_page(width=lay[0].rect.width, height=lay[0].rect.height)
     p.show_pdf_page(p.rect, lay, 0)
@@ -944,27 +847,6 @@ def nova_prancha(doc, n, titulo):
     s = '%02d' % n
     p.insert_text((764 - fz.get_text_length(s, 'hebo', 18) / 2, 85), s, fontname='hebo', fontsize=18)
     return p
-
-def regiao(pno):
-    pg = img[pno - 1]
-    rs = [fz.Rect(i['bbox']) for i in pg.get_image_info() if i['width'] > 1000]
-    r = fz.Rect(rs[0])
-    for x in rs[1:]: r |= x
-    r = fz.Rect(r.x0 + 3, r.y0 + 3, r.x1 - 3, r.y1 - 3)
-    import numpy as np
-    pix = pg.get_pixmap(clip=r, dpi=60)
-    a = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.h, pix.w, pix.n)[:, :, :3]
-    ys, xs = np.where((a < 235).any(axis=2))
-    if len(xs):
-        k = r.width / pix.w
-        r = fz.Rect(r.x0 + xs.min() * k, r.y0 + ys.min() * k, r.x0 + (xs.max() + 1) * k, r.y0 + (ys.max() + 1) * k)
-    return r
-
-def encaixa(p, pno, alvo):
-    r = regiao(pno); f = min(alvo.width / r.width, alvo.height / r.height)
-    w, h = r.width * f, r.height * f
-    t = fz.Rect(alvo.x0 + (alvo.width - w) / 2, alvo.y0 + (alvo.height - h) / 2, 0, 0); t.x1, t.y1 = t.x0 + w, t.y0 + h
-    p.show_pdf_page(t, img, pno - 1, clip=r); return t
 
 def tabela(p, linhas, x0, y0, largura=248, nums=None):
     fs, lh = 7.2, 10.5
@@ -996,95 +878,6 @@ def escala_para(larg_mm, alt_mm, W, H, cheio=False):
     return ESC[-1], MM / ESC[-1]
 
 import math
-def _render3d_old0(page, rect, pids, letra=None, ang=32, elev=20):
-    its = [i for w in pids for i in PW[w]['itens']]
-    U = list(its[0]['bb'])
-    for i in its: U = geo.uniao(U, i['bb'])
-    E = [U[0] - 80, U[1] - 80, U[2] - 80, U[3] + 80, U[4] + 80, U[5] + 80]
-    f = FV[PW[pids[0]]['key']]; sg = 1
-    if len(pids) > 1:
-        f2 = FV[PW[pids[1]]['key']]; sg = 1 if f[0] * f2[1] - f[1] * f2[0] >= 0 else -1
-    a = math.radians(ang * sg); hx = f[0] * math.cos(a) - f[1] * math.sin(a); hy = f[0] * math.sin(a) + f[1] * math.cos(a)
-    e = math.radians(elev); d = (hx * math.cos(e), hy * math.cos(e), -math.sin(e))
-    rn = math.hypot(hy, hx); r = (hy / rn, -hx / rn, 0.0)
-    up = (r[1] * d[2] - r[2] * d[1], r[2] * d[0] - r[0] * d[2], r[0] * d[1] - r[1] * d[0])
-    dot = lambda a_, b_: a_[0] * b_[0] + a_[1] * b_[1] + a_[2] * b_[2]
-    cor = {}
-    for i in inst:
-        for pi in i['pecas']: cor[pi] = MADEIRA if i['tipo'] == 'comp' else (0.97, 0.97, 0.97)
-    if ctx:   # REGRA (v15): piso de referência (cinza claro) para a imagem não ficar "flutuando" no branco
-        _pz = [0.0] * 6; _pz[axl] = U[axl] - 4000; _pz[axl + 3] = U[axl + 3] + 4000; _pz[2] = -20; _pz[5] = 0
-        _pl = w0['plano']; _pz[axd], _pz[axd + 3] = (_pl - 6000, _pl) if sg > 0 else (_pl, _pl + 6000)
-        src.append((caixa_faces(_pz)[1], (0.86, 0.86, 0.86), [False] * 4, 0, -1))
-    L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L)); fcs = []
-    for p_ in P:
-        b = p_['bb']
-        if not (b[0] >= E[0] and b[1] >= E[1] and b[2] >= E[2] and b[3] <= E[3] and b[4] <= E[4] and b[5] <= E[5]): continue
-        base = cor.get(p_['i'], (0.80, 0.80, 0.83))
-        for fc in p_['faces']:
-            uq = []
-            for v in fc:
-                v = tuple(v)
-                if not uq or max(abs(v[k] - uq[-1][k]) for k in range(3)) > 1e-6: uq.append(v)
-            if len(uq) > 1 and max(abs(uq[0][k] - uq[-1][k]) for k in range(3)) < 1e-6: uq.pop()
-            if len(uq) < 3: continue
-            e1 = [uq[1][k] - uq[0][k] for k in range(3)]; e2 = [uq[2][k] - uq[0][k] for k in range(3)]
-            nm = (e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0])
-            nn = math.sqrt(dot(nm, nm)) or 1
-            fs_ = 0.72 + 0.28 * abs(dot(nm, L)) / nn / nl
-            fcs.append((sum(dot(v, d) for v in uq) / len(uq), [(dot(v, r), dot(v, up)) for v in uq], tuple(min(1, x * fs_) for x in base), len(uq)))
-    if not fcs: return
-    xs = [x for _, q, _, _ in fcs for x, _ in q]; ys = [y for _, q, _, _ in fcs for _, y in q]
-    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-    k = min((rect.width - 16) / (x1 - x0), (rect.height - 16) / (y1 - y0))
-    ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
-    T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
-    fcs.sort(key=lambda t: -t[0])
-    sh = page.new_shape()
-    for dep, q, c_, nv in fcs:
-        Q = [T(x, y) for x, y in q]
-        if area2(Q) < 0.1: continue
-        sh.draw_polyline(Q + [Q[0]]); sh.finish(color=c_, fill=c_, width=0.4, closePath=True)
-        ed = list(zip(Q, Q[1:] + Q[:1]))
-        if nv == 3:
-            ed.sort(key=lambda s_: (s_[0][0] - s_[1][0]) ** 2 + (s_[0][1] - s_[1][1]) ** 2); ed = ed[:2]
-        for a_, b_ in ed: sh.draw_line(a_, b_)
-        sh.finish(color=(0.25, 0.25, 0.25), width=0.3)
-    sh.commit()
-    if letra:
-        for i in its:
-            nb = i.get('num_' + letra)
-            if not nb: continue
-            b = i['bb']; c3 = ((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2)
-            cx, cy = T(dot(c3, r), dot(c3, up)); t_ = str(nb); wv = fz.get_text_length(t_, 'hebo', 7) + 4
-            page.draw_rect(fz.Rect(cx - wv / 2, cy - 5.5, cx + wv / 2, cy + 5.5), color=PRETO, fill=(1, 1, 0), width=0.4)
-            page.insert_text((cx - wv / 2 + 2, cy + 2.5), t_, fontname='hebo', fontsize=7)
-
-# v3-limpo
-def geom_parede(w):
-    f = FV[w['key']]; faces = []; boxes = []
-    for it in w['itens']:
-        cor = MADEIRA if it['tipo'] == 'comp' else BRANCO
-        for pi in it['pecas']:
-            for uq, nv, ft in P[pi]['fq']:
-                faces.append((sum(v[0] * f[0] + v[1] * f[1] for v in uq) / len(uq), [(uu(v[0], v[1], f), v[2]) for v in uq], P[pi].get('rgb', cor), ft))
-        u0, z0, u1, z1 = geo.caixa_elev(it['bb'], f)
-        boxes.append(dict(it=it, u0=u0, z0=z0, u1=u1, z1=z1))
-    umin_ = min(b['u0'] for b in boxes); umax_ = max(b['u1'] for b in boxes); zmax_ = max(b['z1'] for b in boxes)
-    Cc = (sum((x['it']['bb'][0] + x['it']['bb'][3]) / 2 for x in boxes) / len(boxes), sum((x['it']['bb'][1] + x['it']['bb'][4]) / 2 for x in boxes) / len(boxes))
-    wf = []
-    for p_ in P:   # REGRA: parede atrás dos móveis na elevação 2D (só referência, não é cotada)
-        b = p_['bb']
-        if not (min(p_['dim'][0], p_['dim'][1]) >= 80 and p_['dim'][2] >= 1800 and max(p_['dim'][0], p_['dim'][1]) >= 800): continue
-        if ((b[0] + b[3]) / 2 - Cc[0]) * f[0] + ((b[1] + b[4]) / 2 - Cc[1]) * f[1] < -150: continue
-        u0_, z0_, u1_, z1_ = geo.caixa_elev(b, f)
-        if u1_ < umin_ - 400 or u0_ > umax_ + 400: continue
-        u0_ = max(u0_, umin_ - 150); u1_ = min(u1_, umax_ + 150); z1_ = min(z1_, zmax_ + 100)
-        if u1_ - u0_ < 5: continue
-        wf.append((1e9, [(u0_, 0), (u1_, 0), (u1_, z1_), (u0_, z1_)], (0.9, 0.9, 0.9), [True] * 4))
-    faces.sort(key=lambda t: -t[0]); faces = wf + faces
-    return dict(w=w, f=f, faces=faces, boxes=boxes, umin=min(b['u0'] for b in boxes), umax=max(b['u1'] for b in boxes), zmax=max(b['z1'] for b in boxes))
-
 def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
     X = lambda u: ox + (u - G['umin']) * k
     Y = lambda z: fy - z * k
@@ -1092,109 +885,6 @@ def desenhar(page, G, ox, fy, k, baloes=None, letra=None):
     sh = page.new_shape()
     sh.draw_line((X(G.get('vmin', G['umin'])) - 6, fy), (X(G.get('vmax', G['umax'])) + 6, fy)); sh.finish(color=PRETO, width=0.9)
     sh.commit()
-
-def render3d(page, rect, pids, letra=None, ang=15, elev=12, abertas=False):
-    its = [i for w in pids for i in PW[w]['itens']]
-    U = list(its[0]['bb'])
-    for i in its: U = geo.uniao(U, i['bb'])
-    E = [U[0] - 80, U[1] - 80, U[2] - 80, U[3] + 80, U[4] + 80, U[5] + 80]
-    f = FV[PW[pids[0]]['key']]; sg = 1
-    # REGRA: câmera sempre na FRENTE dos móveis (lado das portas)
-    _ip = set(pi for i in inst for pi in i['pecas']); Cm = ((U[0] + U[3]) / 2, (U[1] + U[4]) / 2)
-    _mb = [i['bb'] for i in inst if i['tipo'] == 'mod']
-    _dr = [q for q in P if q['i'] not in _ip and q['dim'][2] >= 400 and min(q['dim'][0], q['dim'][1]) <= 26 and not any(all(q['bb'][k] >= m_[k] - 2 for k in range(3)) and all(q['bb'][k + 3] <= m_[k + 3] + 2 for k in range(3)) for m_ in _mb) and all(q['bb'][k] >= U[k] - 80 for k in range(3)) and all(q['bb'][k + 3] <= U[k + 3] + 80 for k in range(3))]
-    if _dr:
-        dx_ = sum((q['bb'][0] + q['bb'][3]) / 2 for q in _dr) / len(_dr) - Cm[0]; dy_ = sum((q['bb'][1] + q['bb'][4]) / 2 for q in _dr) / len(_dr) - Cm[1]
-        if f[0] * dx_ + f[1] * dy_ > 0: f = (-f[0], -f[1])
-    if len(pids) > 1:
-        f2 = FV[PW[pids[1]]['key']]; sg = 1 if f[0] * f2[1] - f[1] * f2[0] >= 0 else -1
-    a = math.radians(ang * sg); hx = f[0] * math.cos(a) - f[1] * math.sin(a); hy = f[0] * math.sin(a) + f[1] * math.cos(a)
-    e = math.radians(elev); d = (hx * math.cos(e), hy * math.cos(e), -math.sin(e))
-    rn = math.hypot(hy, hx); r = (hy / rn, -hx / rn, 0.0)
-    up = (r[1] * d[2] - r[2] * d[1], r[2] * d[0] - r[0] * d[2], r[0] * d[1] - r[1] * d[0])
-    dot = lambda a_, b_: a_[0] * b_[0] + a_[1] * b_[1] + a_[2] * b_[2]
-    cor = {}; ocup = set()
-    for i in inst:
-        for pi in i['pecas']: cor[pi] = MADEIRA if i['tipo'] == 'comp' else (0.97, 0.97, 0.97); ocup.add(pi)
-    dentro = [p_ for p_ in P if all(p_['bb'][k] >= E[k] for k in range(3)) and all(p_['bb'][k + 3] <= E[k + 3] for k in range(3))]
-    rot = {}; portas = []
-    if abertas:
-        mods = [i for i in its if i['tipo'] == 'mod']
-        for p_ in dentro:
-            if p_['i'] in ocup or p_['dim'][2] < 400: continue
-            for m in mods:
-                fm = FV[PW[m['parede']]['key']]; ax = 0 if fm[0] else 1
-                if p_['dim'][ax] > 26 or p_['dim'][1 - ax] < 150: continue
-                front = m['bb'][ax] if fm[ax] > 0 else m['bb'][ax + 3]
-                back = p_['bb'][ax + 3] if fm[ax] > 0 else p_['bb'][ax]
-                if abs(back - front) > 45: continue
-                a0, a1 = m['bb'][1 - ax], m['bb'][4 - ax]; d0, d1 = p_['bb'][1 - ax], p_['bb'][4 - ax]
-                if min(a1, d1) - max(a0, d0) < 0.5 * (d1 - d0): continue
-                hinge = d0 if (d0 - a0) <= (a1 - d1) else d1
-                pv = (back, hinge) if ax == 0 else (hinge, back)
-                cx, cy = (p_['bb'][0] + p_['bb'][3]) / 2, (p_['bb'][1] + p_['bb'][4]) / 2
-                best = None
-                for sg_ in (1, -1):
-                    t = math.radians(95 * sg_); c_, s_ = math.cos(t), math.sin(t)
-                    vx = (cx - pv[0]) * c_ - (cy - pv[1]) * s_; vy = (cx - pv[0]) * s_ + (cy - pv[1]) * c_
-                    if vx * (-fm[0]) + vy * (-fm[1]) > 0: best = (pv[0], pv[1], c_, s_)
-                if best: rot[p_['i']] = best; portas.append((p_, fm, ax, best))
-                break
-        for p_ in dentro:
-            if p_['i'] in ocup or p_['i'] in rot or max(p_['dim']) >= 400: continue
-            for d_, fm, ax, tr in portas:
-                b = p_['bb']; db = d_['bb']
-                if b[1 - ax] >= db[1 - ax] - 5 and b[4 - ax] <= db[4 - ax] + 5 and b[2] >= db[2] - 5 and b[5] <= db[5] + 5 and \
-                   ((fm[ax] > 0 and b[ax] >= db[ax] - 90 and b[ax + 3] <= db[ax + 3] + 2) or (fm[ax] < 0 and b[ax + 3] <= db[ax + 3] + 90 and b[ax] >= db[ax] - 2)):
-                    rot[p_['i']] = tr; break
-    def tf(v, tr):
-        if not tr: return v
-        px, py, c_, s_ = tr; x, y = v[0] - px, v[1] - py
-        return (px + x * c_ - y * s_, py + x * s_ + y * c_, v[2])
-    if ctx:   # REGRA (v15): piso de referência (cinza claro) para a imagem não ficar "flutuando" no branco
-        _pz = [0.0] * 6; _pz[axl] = U[axl] - 4000; _pz[axl + 3] = U[axl + 3] + 4000; _pz[2] = -20; _pz[5] = 0
-        _pl = w0['plano']; _pz[axd], _pz[axd + 3] = (_pl - 6000, _pl) if sg > 0 else (_pl, _pl + 6000)
-        src.append((caixa_faces(_pz)[1], (0.86, 0.86, 0.86), [False] * 4, 0, -1))
-    L = (0.35, -0.45, 0.82); nl = math.sqrt(dot(L, L)); fcs = []
-    for p_ in dentro:
-        base = cor.get(p_['i'], (0.80, 0.80, 0.83)); tr = rot.get(p_['i'])
-        for uq, nv, ft in p_['fq']:
-            vs = [tf(v, tr) for v in uq]; nm = _n(vs[0], vs[1], vs[2])
-            fs_ = 0.72 + 0.28 * abs(dot(nm, L)) / nl
-            fcs.append((sum(dot(v, d) for v in vs) / len(vs), [(dot(v, r), dot(v, up)) for v in vs], tuple(min(1, x * fs_) for x in base), ft))
-    Cc = ((U[0] + U[3]) / 2, (U[1] + U[4]) / 2); wf = []
-    for p_ in P:   # REGRA: paredes aparecem para referência
-        b = p_['bb']
-        if not (min(p_['dim'][0], p_['dim'][1]) >= 80 and p_['dim'][2] >= 1800 and max(p_['dim'][0], p_['dim'][1]) >= 800): continue
-        if b[3] < E[0] - 400 or b[0] > E[3] + 400 or b[4] < E[1] - 400 or b[1] > E[4] + 400: continue
-        if ((b[0] + b[3]) / 2 - Cc[0]) * d[0] + ((b[1] + b[4]) / 2 - Cc[1]) * d[1] < -150: continue
-        for uq, nv, ft in p_['fq']:
-            nm = _n(uq[0], uq[1], uq[2]); fs_ = 0.8 + 0.2 * abs(dot(nm, L)) / nl
-            wf.append((sum(dot(v, d) for v in uq) / len(uq), [(dot(v, r), dot(v, up)) for v in uq], (0.9 * fs_,) * 3, ft))
-    fcs.sort(key=lambda t: -t[0]); wf.sort(key=lambda t: -t[0]); fcs = wf + fcs
-    if not fcs: return
-    xs = [x for _, q, _, _ in fcs for x, _ in q]; ys = [y for _, q, _, _ in fcs for _, y in q]
-    x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
-    k = min((rect.width - 16) / (x1 - x0), (rect.height - 16) / (y1 - y0))
-    ox = rect.x0 + (rect.width - (x1 - x0) * k) / 2; oy = rect.y0 + (rect.height - (y1 - y0) * k) / 2
-    T = lambda x, y: (ox + (x - x0) * k, oy + (y1 - y) * k)
-    sh = page.new_shape()
-    for dep, q, c_, ft in fcs:
-        Q = [T(x, y) for x, y in q]
-        if area2(Q) < 0.1: continue
-        sh.draw_polyline(Q + [Q[0]]); sh.finish(color=c_, fill=c_, width=0.5, closePath=True)
-        for (a_, b_), f_ in zip(zip(Q, Q[1:] + Q[:1]), ft):
-            if f_: sh.draw_line(a_, b_)
-        sh.finish(color=(0.2, 0.2, 0.2), width=0.35)
-    sh.commit()
-    if letra:
-        for i in its:
-            nb = i.get('num_' + letra)
-            if not nb: continue
-            b = i['bb']; c3 = ((b[0] + b[3]) / 2, (b[1] + b[4]) / 2, (b[2] + b[5]) / 2)
-            cx, cy = T(dot(c3, r), dot(c3, up)); t_ = str(nb); wv = fz.get_text_length(t_, 'hebo', 7) + 4
-            page.draw_rect(fz.Rect(cx - wv / 2, cy - 5.5, cx + wv / 2, cy + 5.5), color=PRETO, fill=(1, 1, 0), width=0.4)
-            page.insert_text((cx - wv / 2 + 2, cy + 2.5), t_, fontname='hebo', fontsize=7)
 
 
 # ===== REGRAS FIXAS (João): LISTAGEM = 3D FRONTAL, PORTAS FECHADAS, COM PAREDES | COTAS = 2D FRONTAL, PORTAS ABERTAS, COM PAREDES, SÓ MÓDULOS + PRATELEIRAS =====
@@ -1847,18 +1537,13 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
             page.insert_text((bx - wv / 2 + 2, by + 2.5), t_, fontname='hebo', fontsize=7)
 
 
-import xml.etree.ElementTree as _ET
-_todas = [e.get('DESCRIPTION', '') for e in _ET.parse(cfg['xml']).iter('ITEM')] if cfg.get('xml') else []
-def _pega(rx):
-    v = sorted(set(re.sub(r'\s+', ' ', x).strip() for x in _todas if re.search(rx, x, re.I)))
-    return ', '.join(v[:3]) if v else 'Não possui'
 # puxador por regra DESLIGADO (João: posições erradas). Só liga com "puxadores_regra": true no config.
 PUXADORES = _gerar_puxadores() if cfg.get('puxadores_regra') else []
 print('PUXADORES:', len(PUXADORES), '(regra desligada; o DXF não traz puxador)' if not PUXADORES else 'gerados')
 # ---------------- montagem ----------------
 doc = fz.open(); n = 0; relat = []
 n += 1; p = nova_prancha(doc, n, 'CAPA')
-(encaixa(p, cfg['capa_img'], fz.Rect(AREA_IN.x0, AREA_IN.y0 + 34, AREA_IN.x1, AREA_IN.y1)) if cfg.get('capa_img') else render3d(p, fz.Rect(AREA_IN.x0, AREA_IN.y0 + 34, AREA_IN.x1, AREA_IN.y1), [w['id'] for w in paredes]))
+render3d(p, fz.Rect(AREA_IN.x0, AREA_IN.y0 + 34, AREA_IN.x1, AREA_IN.y1), [w['id'] for w in paredes])
 t = f"CADERNO DE {cfg['tipo_caderno']} - {cfg['dados']['ambiente'].upper()}"
 p.insert_text((419.5 - fz.get_text_length(t, 'hebo', 18) / 2, AREA_IN.y0 + 22), t, fontname='hebo', fontsize=18, color=RED)
 
@@ -2046,7 +1731,7 @@ m = len(com_img); a = AREA_IN
 _nc = 1 if m == 1 else 2 if m <= 4 else 3; _nr = -(-m // _nc)
 cel = [fz.Rect(a.x0 + (i % _nc) * a.width / _nc, a.y0 + (i // _nc) * a.height / _nr, a.x0 + (i % _nc + 1) * a.width / _nc, a.y0 + (i // _nc + 1) * a.height / _nr) for i in range(m)]
 for v, c in zip(com_img, cel):
-    (encaixa(p, v['img3d'], fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4)) if v.get('img3d') else render3d(p, fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4), v['paredes'], contexto=len(v['paredes']) == 1))
+    render3d(p, fz.Rect(c.x0 + 4, c.y0 + 16, c.x1 - 4, c.y1 - 4), v['paredes'], contexto=len(v['paredes']) == 1)
     p.insert_text((c.x0 + 6, c.y0 + 11), v['titulo'], fontname='hebo', fontsize=10, color=RED)
 for j in range(1, _nc): p.draw_line((a.x0 + j * a.width / _nc, AREA.y0), (a.x0 + j * a.width / _nc, AREA.y1), color=PRETO, width=0.6)
 for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.x1, a.y0 + j * a.height / _nr), color=PRETO, width=0.6)
@@ -2213,18 +1898,11 @@ for v in V:
     n += 1; p = nova_prancha(doc, n, f"MEDIDAS E ALTURAS - {v['titulo']}")
     nc = len(GS); zm = max(G['ztop'] for G in GS)
     Wm = [G['vmax'] - G['vmin'] for G in GS]
-    # REGRA (v16, João): parede sozinha na prancha -> a prancha se divide: FRONTAL à esquerda, LATERAL do móvel à direita
-    LT = None   # REGRA (v26, João): COTA É SÓ A VISTA FRONTAL. Não tem vista lateral na prancha de cotas.
-    Wl = (LT['hmax'] + LT['esp'] + 350) if LT else 0
     # REGRA (v15, João): a elevação PREENCHE a prancha (parede a parede, piso ao teto), mesma escala nas colunas;
     # móvel pequeno não fica pequeno: escala sobe até 1:10. Colunas proporcionais ao tamanho de cada parede.
-    S, k = escala_para(sum(Wm) + Wl, zm, AREA_IN.width - 80 * (nc + (1 if LT else 0)), AREA_IN.height - 62, cheio=True)
-    if LT:
-        cwl = max(Wl * k + 80, AREA_IN.width * 0.28)
-        cws = [AREA_IN.width - cwl]
-    else:
-        sobra = (AREA_IN.width - sum(w_ * k + 80 for w_ in Wm)) / nc
-        cws = [w_ * k + 80 + sobra for w_ in Wm]
+    S, k = escala_para(sum(Wm), zm, AREA_IN.width - 80 * nc, AREA_IN.height - 62, cheio=True)
+    sobra = (AREA_IN.width - sum(w_ * k + 80 for w_ in Wm)) / nc
+    cws = [w_ * k + 80 + sobra for w_ in Wm]
     fy = AREA_IN.y0 + (AREA_IN.height - 62 - zm * k) / 2 + 22 + zm * k
     for j, G in enumerate(GS):
         cw = cws[j]; cx0 = AREA_IN.x0 + sum(cws[:j])
@@ -2234,14 +1912,6 @@ for v in V:
         lab = (f"{v['titulo']} - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][j]} - ESC. 1:{S:g}")
         p.insert_text((cx0 + cw / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
         if j: p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
-    if LT:
-        cx0 = AREA_IN.x0 + cws[0]
-        oxl = cx0 + (cwl - (LT['hmax'] + LT['esp'] + 60) * k) / 2 + LT['esp'] * k
-        desenhar_lateral(p, LT, oxl, fy, k, GS[0]['ztop'])
-        cotar_lateral(p, LT, oxl, fy, k)
-        lab = (f"{v['titulo']} - LATERAL - ESC. 1:{S:g}" if v.get('divisoria') else f"VISTA {v['letras'][0]} - LATERAL - ESC. 1:{S:g}")
-        p.insert_text((cx0 + cwl / 2 - fz.get_text_length(lab, 'hebo', 8.5) / 2, min(fy + 44, AREA_IN.y1 - 2)), lab, fontname='hebo', fontsize=8.5)
-        p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
 
 
 # REGRA (v18, PDF da Priscila): DIVISOR DE GAVETA (joias) = prancha própria: listagem das peças, 3D do divisor e

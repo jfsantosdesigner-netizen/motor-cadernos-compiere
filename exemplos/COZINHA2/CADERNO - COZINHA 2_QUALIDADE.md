@@ -1,9 +1,10 @@
 # QUALIDADE — RAFAEL CLARET / Cozinha 2 (gerado por script)
 
-- APROVADO | nº de pranchas 10 = 4 + 4 listagens + 2 cotas
+- APROVADO | nº de pranchas 15 = 4 + 4 listagens + 2 cotas
 - INCERTO | itens localizados no DXF: 40/41
   - INCERTO: Painel Freijo Puro MDF 719x18x364 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto
+- APROVADO | texturas dos materiais
 - VISTA A: paredes x+@2153 | 20 linhas de listagem
 - VISTA B: paredes y+@4155 | 1 linhas de listagem
 - VISTA C: paredes y-@0 | 14 linhas de listagem

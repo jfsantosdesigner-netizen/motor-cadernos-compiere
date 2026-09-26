@@ -1,7 +1,14 @@
-MOTOR DE CADERNOS COMPIERE - v30 (26/09/2026)
+MOTOR DE CADERNOS COMPIERE - v31 (26/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v31 (26/09/2026) - erros da v30 nos projetos do Guilherme (Cozinha e Suíte)
+ - COTAS = PORTAS ABERTAS de novo: porta/frente (chapa fina na frente do módulo, até 150 mm à frente ou 80 mm para
+   dentro — porta de correr) não entra no desenho de cotas; o interior (prateleiras, gavetas, vãos) fica à vista
+ - NICHO precisa ter a frente aberta: chapas do conjunto fechando >= 40% da frente = caixa fechada, não é nicho
+ - ilha/península baixa (<= 1,20 m) sem parede atrás: cotas vão até 300 mm acima do móvel (desenho grande), não até o teto
+ - 12 projetos de teste regerados
 
 v30 (26/09/2026) - Suíte do Guilherme comparada com outra suíte
  - PORTA/FRENTE AVULSA do XML (POR_...) continua fora da listagem, mas é DESENHADA junto do móvel onde encosta (frente de gaveta do criado-mudo)

@@ -1219,27 +1219,43 @@ def _vista_limites(w, f, umin_, umax_, zmax_):
     for p_ in MALHA_PAR:
         for fc in p_['faces']:
             cx.append([min(v[0] for v in fc), min(v[1] for v in fc), min(v[2] for v in fc), max(v[0] for v in fc), max(v[1] for v in fc), max(v[2] for v in fc)])
-    esq, dir_, esp_e, esp_d, tetos = None, None, 150, 150, []
+    esq, dir_, esp_e, esp_d, tetos = None, None, 150, 150, []; fundo_ = False
     for b in cx:
         if b[5] - b[2] < 1500: continue
         d0, d1 = sorted(((pl - b[axd]) * sg, (pl - b[axd + 3]) * sg))
         if d1 < -30 or d0 > 800: continue      # só paredes na faixa dos móveis (fundo até 800 mm à frente)
         u0, z0, u1, z1 = geo.caixa_elev(b, f)
-        if u1 > umin_ + 20 and u0 < umax_ - 20: tetos.append(z1); continue
+        if u1 > umin_ + 20 and u0 < umax_ - 20: tetos.append(z1); fundo_ = True; continue
         if u0 >= umax_ - 20 and u0 - umax_ <= 4000 and (dir_ is None or u0 < dir_): dir_ = u0; esp_d = min(max(u1 - u0, 60), 250) if u1 - u0 > 1 else 150
         if u1 <= umin_ + 20 and umin_ - u1 <= 4000 and (esq is None or u1 > esq): esq = u1; esp_e = min(max(u1 - u0, 60), 250) if u1 - u0 > 1 else 150
         tetos.append(z1)
     vmin_ = esq - esp_e if esq is not None else umin_ - 300
     vmax_ = dir_ + esp_d if dir_ is not None else umax_ + 300
     ztop_ = min(max(tetos), 3200) if tetos else zmax_ + 150
+    if not fundo_ and zmax_ <= 1200: ztop_ = zmax_ + 300   # REGRA (v31): ilha/península baixa sem parede atrás -> desenho grande
     return vmin_, vmax_, max(ztop_, zmax_ + 50)
+
+def _portas_cota(w):
+    # REGRA (v31): COTAS = PORTAS ABERTAS. Chapa fina (<= 30 mm) na frente do módulo (até 150 mm à frente, cobre porta de
+    # correr), dentro da largura/altura dele = porta/frente -> não entra no desenho de cotas (o interior fica à vista).
+    f_ = FV[w['key']]; ad = 0 if f_[0] else 1; al = 1 - ad; sg_ = f_[ad]; perto = lambda bb: min(bb[ad] * sg_, bb[ad + 3] * sg_)
+    out = set()
+    for m in [i for i in w['itens'] if i['tipo'] == 'mod']:
+        mb = m['bb']; fr = perto(mb)
+        for pi in m['pecas']:
+            b = P[pi]['bb']
+            if b[ad + 3] - b[ad] <= 30 and (b[al + 3] - b[al]) >= 100 and (b[5] - b[2]) >= 60 and fr - 150 <= perto(b) <= fr + 80:
+                out.add(pi)
+    return out
 
 def geom_parede(w):
     f = FV[w['key']]; faces = []; boxes = []
     dep = lambda vs: sum(v[0] * f[0] + v[1] * f[1] for v in vs) / len(vs)
+    _pc = _portas_cota(w)
     for it in w['itens']:
         cor = MADEIRA if it['tipo'] == 'comp' else BRANCO
         for pi in it['pecas']:
+            if pi in _pc: continue   # porta/frente não aparece nas cotas
             sd_ = sorted(P[pi]['dim'])
             if sd_[1] < 50 or sd_[0] > 60: continue  # REGRA: só MDF (sem dobradiças/suportes/cabideiros)
             for uq, nv, ft in P[pi]['fq']:
@@ -1624,7 +1640,16 @@ def nichos(w):
         ext = [U_[k + 3] - U_[k] for k in range(3)]
         hz = sum(1 for i in g if i['bb'][5] - i['bb'][2] <= 30)
         ax_ = 1 if FV[w['key']][0] else 0
-        if len(g) >= 3 and hz >= 2 and ext[ax_] <= 2000 and ext[2] <= 1200: out.append(g)
+        if not (len(g) >= 3 and hz >= 2 and ext[ax_] <= 2000 and ext[2] <= 1200): continue
+        # REGRA (v31): nicho tem a FRENTE ABERTA. Chapas do conjunto em pé de frente p/ a câmera, na face da frente,
+        # cobrindo >= 40% da frente = caixa fechada -> não é nicho.
+        ad_ = 1 - ax_; sg_ = FV[w['key']][ad_]; perto = lambda bb: min(bb[ad_] * sg_, bb[ad_ + 3] * sg_)
+        fr_ = min(perto(i['bb']) for i in g); cob_ = 0.0
+        for i in g:
+            b = i['bb']
+            if b[ad_ + 3] - b[ad_] <= 30 and perto(b) <= fr_ + 40 and b[5] - b[2] > 30: cob_ += (b[ax_ + 3] - b[ax_]) * (b[5] - b[2])
+        if cob_ >= 0.4 * ext[ax_] * ext[2]: continue
+        out.append(g)
     return out
 
 def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, contexto=False, **kw):

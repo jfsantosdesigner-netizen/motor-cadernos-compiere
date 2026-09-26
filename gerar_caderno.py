@@ -277,6 +277,22 @@ def _eletro_ok(p_):
         if p_['bb'][2] <= t_ + 15 and p_['bb'][5] > t_ - 60: return p_['bb'][5] <= t_ + 300
     return True
 ELETROS = [p_ for p_ in ELETROS if _eletro_ok(p_)]
+# REGRA (v30): PORTA/FRENTE AVULSA do XML (POR_...) não entra na listagem (v26), mas É DESENHADA junto do móvel onde encosta
+# (ex.: frente de gaveta do criado-mudo). Casa pela medida (±1 mm) com peça do DXF ainda sem dono, encostada no móvel.
+_por = set()
+for e in _ET2.parse(cfg['xml']).iter('ITEM'):
+    U_ = (e.get('ID') or '').upper()
+    if U_.startswith('POR_') or '_POR_' in U_:
+        try: _por.add(tuple(sorted(round(float(e.get(a).replace(',', '.'))) for a in ('WIDTH', 'HEIGHT', 'DEPTH'))))
+        except Exception: pass
+_dono = {pi for i in inst for pi in i['pecas']}
+for p_ in P:
+    if p_['i'] in _dono or not p_['faces']: continue
+    k_ = tuple(sorted(round(x) for x in p_['dim']))
+    if not any(all(abs(a - b) <= 1 for a, b in zip(k_, q_)) for q_ in _por): continue
+    alvo_ = min(inst, key=lambda i: geo.dist_caixas(p_['bb'], i['bb']), default=None)
+    if alvo_ is not None and geo.dist_caixas(p_['bb'], alvo_['bb']) <= 5:
+        alvo_['pecas'].append(p_['i']); _dono.add(p_['i'])
 # REGRA (v28, João): móvel feito com GEOMETRIA no Promob (vem no DXF, não no XML) que ENCOSTA num móvel do projeto
 # = referência na imagem (como a pedra): forma real, sem listagem/balão/cota.
 # v29: peça com medida+cor do XML é PEÇA DE MÓVEL (porta/frente), nunca geometria.
@@ -1951,8 +1967,19 @@ for z, q, cor, ft in fcs:
             if f_: sh.draw_line(a_, b_)
         sh.finish(color=PRETO if cor is None else (0.3, 0.3, 0.3), width=0.5 if cor is None else 0.3, closePath=False)
 sh.commit()
+def _clip(x0, y0, x1, y1, R):   # v30: linha de parede não sai do quadro da planta
+    t0, t1 = 0.0, 1.0; dx, dy = x1 - x0, y1 - y0
+    for pp, qq in ((-dx, x0 - R.x0), (dx, R.x1 - x0), (-dy, y0 - R.y0), (dy, R.y1 - y0)):
+        if pp == 0:
+            if qq < 0: return None
+        else:
+            t = qq / pp
+            if pp < 0: t0 = max(t0, t)
+            else: t1 = min(t1, t)
+    return None if t0 > t1 else ((x0 + t0 * dx, y0 + t0 * dy), (x0 + t1 * dx, y0 + t1 * dy))
 for (a_, b_) in _linhas_par:
-    p.draw_line((PX(a_[0]), PY(a_[1])), (PX(b_[0]), PY(b_[1])), color=PRETO, width=0.9)
+    _sg = _clip(PX(a_[0]), PY(a_[1]), PX(b_[0]), PY(b_[1]), pr)
+    if _sg: p.draw_line(_sg[0], _sg[1], color=PRETO, width=0.9)
 for w in paredes:          # REGRA (v28, João): planta = cota de CADA CONJUNTO de móveis (comprimento + largura), sem cotar o vão entre eles
     f = FV[w['key']]; ax = 1 if w['key'][0] == 'x' else 0; ad = 1 - ax; gr = []
     for i in sorted(w['itens'], key=lambda i: i['bb'][ax]):

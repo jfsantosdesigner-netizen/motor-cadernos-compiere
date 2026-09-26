@@ -266,13 +266,45 @@ intocado**:
 | PRISCILA_COZINHA | p4 (198 px), p9 e p10 (451 px) |
 | SUITE_CASAL | p4 (1056 px), p5 a p7 (1995 px) |
 
-Não é falta de determinismo: rodei a COZINHA2 duas vezes seguidas na mesma pasta e os dois PDFs
-saíram **iguais**. O motor é determinístico. A diferença é de **ambiente** — os PDFs do
-repositório foram gerados na nuvem, e o PC produz pixels ligeiramente diferentes com o mesmo
-código e a mesma entrada (as pranchas afetadas são sempre a visão geral e as listagens, onde
-entram texturas e imagens rasterizadas).
+**Causa: a pasta `texturas/` é ENTRADA do motor, não cache.** (Correção: uma versão anterior
+deste relatório dizia que o motor era determinístico. Estava errado — o teste que sustentava
+aquilo rodava o projeto duas vezes seguidas, as duas com o cache já quente, e por construção não
+conseguia detectar dependência de cache.)
 
-São áreas pequenas (de 200 a 2.000 px numa prancha de ~2,5 milhões), mas isso tem uma
-consequência prática que vale registrar: **comparar o PDF gerado no PC com o PDF commitado na
-nuvem não serve como critério de aprovação.** A comparação só vale entre dois PDFs gerados na
-mesma máquina — foi por isso que a verificação acima usou grupo de controle.
+Medição correta, na COZINHA2:
+
+| teste | resultado |
+|---|---|
+| duas rodadas com `texturas/` intacta | idêntico |
+| rodada fria (`texturas/` apagada) x rodada quente | **10 das 15 pranchas mudam** |
+| apagar só o `cores_cache.json` | idêntico — não é ele |
+
+O mecanismo está no `textura()`: quando o arquivo não está em `texturas/`, o motor lê o material
+da pasta MATERIAIS, reduz com `thumbnail((1024, 1024))` e salva em JPEG qualidade 82. Esse
+arquivo regerado **não reproduz** o que está commitado — depois de apagar a pasta e rodar, o git
+acusa `M` (modificado) em `branco.jpg`, `freijo_puro.jpg` e `pecan.jpg`. Bytes diferentes da
+mesma origem, por diferença de versão do Pillow / reamostragem / encoder JPEG.
+
+E há um agravante: o motor só regera a textura dos materiais **daquele projeto**. Das 12 texturas,
+a rodada da COZINHA2 recriou 3 e deixou 9 faltando. Ou seja, **o conteúdo da pasta `texturas/` do
+repositório é subproduto de quem rodou o quê e em que ordem** — e realimenta todos os cadernos
+seguintes.
+
+É isso que explica os 5 projetos divergentes: na nuvem não existe a pasta MATERIAIS (3 GB, fora
+do repositório), então material sem textura commitada sai em cor lisa; no PC, com MATERIAIS
+presente, a textura é gerada e o desenho muda.
+
+**Consequências práticas:**
+
+1. "Regerado e commitado" não garante nada sozinho: o resultado depende do estado da pasta
+   `texturas/` na máquina de quem rodou.
+2. Comparar PDF gerado numa máquina com PDF commitado de outra não serve de critério de
+   aprovação. Só vale comparar dois PDFs gerados na mesma máquina, com a mesma `texturas/`.
+3. A verificação da v32 na seção acima continua válida justamente por isso: os dois braços
+   (v32 e v31 de controle) rodaram com a `texturas/` commitada intacta nos dois casos —
+   conferido por `git status texturas` antes e depois.
+4. Enquanto `texturas/` for regerável e versionada ao mesmo tempo, esse ruído volta. Ou ela
+   passa a ser tratada como artefato fixo (nunca regerada se já existe — é o comportamento
+   atual, mas sem garantia de estar completa), ou o motor passa a gerar a chapa sempre a partir
+   do MATERIAIS, de forma reprodutível.
+

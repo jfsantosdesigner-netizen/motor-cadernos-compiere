@@ -8,7 +8,7 @@ for k, (nome, pdf) in enumerate(cads):
     tabs.append(f'<button class="tab" data-alvo="{cid}" aria-selected="{str(k == 0).lower()}">{html.escape(nome)}<span>{len(d)} pranchas</span></button>')
     figs = []
     for i, p in enumerate(d):
-        b = base64.b64encode(p.get_pixmap(dpi=100).tobytes('jpeg', jpg_quality=78)).decode()
+        b = base64.b64encode(p.get_pixmap(dpi=95).tobytes('jpeg', jpg_quality=78)).decode()
         figs.append(f'<figure id="{cid}-{i + 1}"><figcaption>Prancha {i + 1:02d}</figcaption><img loading="lazy" alt="{html.escape(nome)} prancha {i + 1}" src="data:image/jpeg;base64,{b}"></figure>')
     nav = ''.join(f'<a href="#{cid}-{i + 1}">{i + 1:02d}</a>' for i in range(len(d)))
     secs.append(f'<section id="{cid}" {"" if k == 0 else "hidden"}><nav class="pags" aria-label="Pranchas">{nav}</nav>{"".join(figs)}</section>')

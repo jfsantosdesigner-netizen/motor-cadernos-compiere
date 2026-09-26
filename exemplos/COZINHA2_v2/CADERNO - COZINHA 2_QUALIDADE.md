@@ -1,6 +1,6 @@
 # QUALIDADE — RAFAEL CLARET / Cozinha 2 (gerado por script)
 
-- APROVADO | nº de pranchas 11 = 4 + 4 listagens + 2 cotas
+- APROVADO | nº de pranchas 15 = 4 + 4 listagens + 2 cotas
 - APROVADO | itens localizados no DXF: 41/41
 - APROVADO | XML confere com o projeto
 - APROVADO | texturas dos materiais

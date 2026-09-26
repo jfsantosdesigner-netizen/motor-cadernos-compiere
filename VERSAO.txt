@@ -1,7 +1,20 @@
-MOTOR DE CADERNOS COMPIERE - v27 (26/09/2026)
+MOTOR DE CADERNOS COMPIERE - v28 (26/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
 No PC: pasta C:\CLAUDE\motor vN = versão instalada.
+
+v28 (26/09/2026) - 25 comentários do João na página (regras gerais, valem para todos os projetos)
+ - SUB-IMAGEM: peça no alto = vista DE CIMA p/ baixo; peça embaixo = de baixo p/ cima; só os MÓDULOS onde a peça está;
+   sem portas (mostra o que tem DENTRO do móvel, ex.: cantoneira); critério de amontoado mais rígido (3+ a 16 pt)
+ - peça suspensa sob tampo (gaveta de teclado) e módulo de CANTO ganham sub-imagem
+ - UM detalhe por prancha: com mais de um, a prancha é replicada ("- DETALHE n")
+ - detalhe "costas atrás de painel" (v21) substituído pela regra geral de peça escondida (v27)
+ - "parede" com até 2 peças soltas encostadas em móvel de outra parede = junta nela (sem vista/cotas próprias)
+ - VISÃO GERAL: mais de 4 vistas = uma imagem diagonal para cada 2 vistas
+ - móvel feito com GEOMETRIA (DXF sem XML) encostado em móvel = referência na imagem, como a pedra
+ - divisor/gaveta de painéis: imagem pequena "ONDE FICA" (dentro do móvel, sem portas)
+ - painel com nichos: 2ª imagem na diagonal; lateral da divisória lista também as ripas centrais (5% à vista)
+ - PLANTA: cota de CADA CONJUNTO de móveis (comprimento + largura), sem cotar o vão entre conjuntos
 
 v27 (26/09/2026) - nuvem, aguardando teste do João
  - REGRA GERAL "TUDO QUE ESTÁ NA LISTA APARECE NÍTIDO": peça listada que NÃO aparece na imagem principal (escondida

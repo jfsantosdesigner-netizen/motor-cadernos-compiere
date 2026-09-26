@@ -1,6 +1,6 @@
 # QUALIDADE — PRISCILA / Suíte Casal (gerado por script)
 
-- APROVADO | nº de pranchas 21 = 4 + 6 listagens + 5 cotas + 1 divisor(es) de gaveta + 1 gaveta(s) em painéis | divisória ripada: 1
+- APROVADO | nº de pranchas 26 = 4 + 6 listagens + 5 cotas + 1 divisor(es) de gaveta + 1 gaveta(s) em painéis | divisória ripada: 1
 - INCERTO | itens localizados no DXF: 61/62
   - INCERTO: Gaveta Corrediça Telescópica 354x90x400 (não localizado; listado com * na vista A)
 - APROVADO | XML confere com o projeto
@@ -8,7 +8,7 @@
 - VISTA A: paredes x-@120 | 9 linhas de listagem
 - VISTA B: paredes y+@-120 | 10 linhas de listagem | CONDIÇÕES -> rodapé/base (6 peças) em detalhe
 - VISTA C: paredes x+@2301L | 3 linhas de listagem | CONDIÇÕES -> perna do L com vista própria
-- VISTA D: paredes x+@4816 | 8 linhas de listagem | CONDIÇÕES -> 1 detalhe(s) de módulo pequeno, 7 peça(s) atrás de painel no detalhe das costas
+- VISTA D: paredes x+@4816 | 8 linhas de listagem | CONDIÇÕES -> 1 detalhe(s) de módulo pequeno
 - VISTA E: paredes y-@-4810 | 5 linhas de listagem
 - DIVISÓRIA RIPADA: paredes DIVISORIA@1951 | 19 linhas de listagem
   A1: Armário c/ Portas de Giro c/ Rodapé 2820x2540x550

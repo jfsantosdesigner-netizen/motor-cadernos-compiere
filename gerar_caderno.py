@@ -614,18 +614,8 @@ for v in V:
     v['subs'] = [v] if len(v['paredes']) == 1 else [dict(letra=l_, letras=[l_], titulo='VISTA ' + l_, img3d=None, paredes=[w_]) for w_, l_ in zip(v['paredes'], v['letras'])]
 VW = [s_ for v in V for s_ in v['subs']]
 
-# listagem de cada vista: módulos primeiro, depois componentes; mesmo item = mesma linha
-for v in VW:
-    its = [i for w in v['paredes'] for i in PW[w]['itens']]
-    ordem = sorted(its, key=lambda i: (i['tipo'] != 'mod', i['n']))
-    chaves = []
-    for i in ordem:
-        k = (i['desc'], i['dim'])
-        if k not in chaves: chaves.append(k)
-    v['linhas'] = [(d, dm, '') for d, dm in chaves]
-    for i in its: i['num_' + v['letra']] = chaves.index((i['desc'], i['dim'])) + 1
-if nao_achados:
-    VW[0]['linhas'] += [(d, dm, '*') for d, dm in nao_achados]
+# REGRA (v33, João): SEM ASTERISCO. Item que o motor não localizou no DXF não é desenhado,
+# logo não aparece na imagem frontal e, pela regra da peça escondida, não é listado.
 
 # ---------------- geometria de elevação ----------------
 def uu(x, y, f): return x * f[1] - y * f[0]
@@ -1508,6 +1498,31 @@ def render3d(page, rect, pids, letra=None, itens=None, ang=None, dmin=4200, cont
 # puxador por regra DESLIGADO (João: posições erradas). Só liga com "puxadores_regra": true no config.
 PUXADORES = _gerar_puxadores() if cfg.get('puxadores_regra') else []
 print('PUXADORES:', len(PUXADORES), '(regra desligada; o DXF não traz puxador)' if not PUXADORES else 'gerados')
+# REGRA (v33, João): PEÇA ESCONDIDA NÃO É LISTADA. Antes de montar a tabela, o motor desenha a
+# imagem frontal da vista num rascunho e anota quais peças realmente aparecem nela. Item que não
+# tem nenhuma peça visível fica FORA da tabela e não ganha balão. Nada de tirar a peça de onde ela
+# está para fazer uma imagem só dela.
+# (precisa vir depois de render3d estar definido)
+for v in VW:
+    its = [i for w in v['paredes'] for i in PW[w]['itens']]
+    _vis_v = set()
+    _tmp_v = fz.open(); _pg_v = _tmp_v.new_page(width=842, height=595)
+    render3d(_pg_v, fz.Rect(AREA_IN.x0 + 258, AREA_IN.y0, AREA_IN.x1, AREA_IN.y1), v['paredes'],
+             contexto=True, visiveis=_vis_v, so_visiveis=True)
+    _fora_v = [i for i in its if not any(pi in _vis_v for pi in i['pecas'])]
+    if _fora_v:
+        print('ESCONDIDAS (fora da listagem) em %s: %d' % (v['titulo'], len(_fora_v)))
+        for i in _fora_v: print('    %s %s' % (i['desc'], i['dim']))
+        its = [i for i in its if i not in _fora_v] or its
+    v['itens_listados'] = its
+    ordem = sorted(its, key=lambda i: (i['tipo'] != 'mod', i['n']))
+    chaves = []
+    for i in ordem:
+        k = (i['desc'], i['dim'])
+        if k not in chaves: chaves.append(k)
+    v['linhas'] = [(d, dm, '') for d, dm in chaves]
+    for i in its: i['num_' + v['letra']] = chaves.index((i['desc'], i['dim'])) + 1
+
 # ---------------- montagem ----------------
 doc = fz.open(); n = 0; relat = []
 n += 1; p = nova_prancha(doc, n, 'CAPA')
@@ -1725,7 +1740,6 @@ def _partes(s_):
             if (i['desc'], i['dim']) not in chv: chv.append((i['desc'], i['dim']))
         for i in g: i['num_' + key] = chv.index((i['desc'], i['dim'])) + 1
         lin = [(d, dm, '') for d, dm in chv]
-        if k_ == 0 and s_ is VW[0]: lin += [(d, dm, '*') for d, dm in nao_achados]
         out.append(dict(letra=key, titulo=f"{s_['titulo']} - {nome}", linhas=lin, paredes=s_['paredes'], ids={id(i) for i in g}, primeiro=k_ == 0, base=s_))
     _extra += len(out) - 1
     return out
@@ -1767,8 +1781,6 @@ for v in V:
     for s_ in ([] if v.get('divisoria') else [q_ for s0_ in v['subs'] for q_ in _partes(s0_)]):
         n += 1; p = nova_prancha(doc, n, f"MÓDULOS E PAINÉIS - {s_['titulo']}")
         yb = tabela(p, s_['linhas'], AREA_IN.x0, AREA_IN.y0)
-        if nao_achados and s_.get('base', s_) is VW[0] and s_.get('primeiro', True):
-            p.insert_text((AREA_IN.x0, yb + 9), '* não localizado no DXF - conferir', fontname='helv', fontsize=6, color=(0.7, 0, 0))
         # REGRA (v33, João): SO NICHO gera segunda imagem na prancha de listagem. Sairam o detalhe
         # das costas, o de rodape/base, o de modulo pequeno e a subimagem de peca escondida.
         # A subimagem fica na MESMA prancha da vista; havendo mais de um nicho, a prancha e
@@ -1794,7 +1806,7 @@ for v in V:
             render3d(p, fz.Rect(r_.x0 + 2, r_.y0 + 14, r_.x1 - 2, r_.y1 - 2), [w], letra=s_['letra'], itens=c,
                      ang=(-1 if lado > 0 else 1) * (28 if larg_ < 1000 else 14), dmin=2200, margem=60, isolado=True)
         if nis:
-            y0_ = (yb + 18 if not (nao_achados and s_ is VW[0]) else yb + 24)
+            y0_ = yb + 18
             for w, c, tp_ in nis:
                 _dq(p, w, c, tp_, fz.Rect(AREA_IN.x0, y0_, AREA_IN.x0 + 248, AREA_IN.y1))
         for k2_, (w, c, tp_) in enumerate(_det_extra, 1):
@@ -1905,7 +1917,7 @@ esperado = 4 + len(VW) + _extra + len(V) + len(DIVISORES) + len(DIVISORIAS) + le
 q = [f"# QUALIDADE — {cfg['dados']['cliente']} / {cfg['dados']['ambiente']} (gerado por script)", '',
      f"- {'APROVADO' if n == esperado else 'REPROVADO'} | nº de pranchas {n} = 4 + {len(VW)} listagens + {len(V)} cotas" + (f" + {len(DIVISORES)} divisor(es) de gaveta" if DIVISORES else '') + (f" + {len(GAVETAS)} gaveta(s) em painéis" if GAVETAS else '') + (f" | divisória ripada: {len(DIVISORIAS)}" if DIVISORIAS else ''),
      f"- {'APROVADO' if not nao_achados else 'INCERTO'} | itens localizados no DXF: {len(linhas) - len(nao_achados)}/{len(linhas)}"]
-for d, dm in nao_achados: q.append(f"  - INCERTO: {d} {dm} (não localizado; listado com * na vista {VW[0]['letra']})")
+for d, dm in nao_achados: q.append(f"  - FORA DA LISTAGEM: {d} {dm} (não localizado no DXF, logo não aparece na imagem)")
 q.append(f"- {'APROVADO' if confere else 'INCERTO'} | XML confere com o projeto" + ('' if confere else ' — exportar XML atual'))
 TEX_FALTA = [m_ for m_ in TEX_FALTA if not textura(m_)] + [m_ for m_, v_ in _cc.items() if not v_ and m_ in _todas_mats]
 q.append(f"- {'APROVADO' if not TEX_FALTA else 'INCERTO'} | texturas dos materiais" + ('' if not TEX_FALTA else ' — faltando (sai cor lisa): ' + ', '.join(TEX_FALTA)))
@@ -1916,7 +1928,7 @@ for v in VW:
         if _nq: _ex.append(f"{len(_nq)} nicho(s) em subimagem")
         if PW[w_].get('perna_l'): _ex.append("perna do L com vista própria")
     q.append(f"- {v['titulo']}: paredes {', '.join(v['paredes'])} | {len(v['linhas'])} linhas de listagem" + (' | CONDIÇÕES -> ' + ', '.join(_ex) if _ex else ''))
-q += [f"  {v['letra']}{i}: {d} {dm}{m_}" for v in VW for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
+q += [f"  {v['letra']}{i}: {d} {dm}" for v in VW for i, (d, dm, m_) in enumerate(v['linhas'], 1)]
 open(os.path.splitext(cfg['saida'])[0] + '_QUALIDADE.md', 'w', encoding='utf-8').write('\n'.join(q))
 print('\n'.join(q))
 for i in range(len(doc)):

@@ -98,11 +98,13 @@ def _norm(t):
     t = _ud.normalize('NFKD', t).encode('ascii', 'ignore').decode().lower()
     return re.sub(r'[^a-z0-9]+', ' ', t).strip()
 _MD = os.path.dirname(os.path.abspath(__file__))
-# REGRA (v23, João): o motor procura as cores/texturas SOZINHO, primeiro na pasta MATERIAIS DENTRO do motor
-# (C:\CLAUDE\motor vN\MATERIAIS); depois no caminho do config; por último C:\CLAUDE\MATERIAIS.
+# REGRA (v23, João): o motor procura as cores/texturas SOZINHO, primeiro na pasta MATERIAIS dentro
+# do próprio motor, depois no caminho que vier no config.
+# REGRA (v34, João): o motor NÃO busca referência fora dele. Material vem da pasta MATERIAIS
+# dentro do próprio motor ou do caminho que o config mandar. Nenhum caminho de máquina no código.
 _MAT = next((c_ for c_ in (os.path.join(_MD, 'MATERIAIS'),
-                           (cfg.get('materiais') if cfg.get('materiais') and os.path.isabs(cfg.get('materiais')) else os.path.join(_MD, cfg.get('materiais') or 'MATERIAIS')),
-                           r'C:\CLAUDE\MATERIAIS') if os.path.isdir(c_)), os.path.join(_MD, 'MATERIAIS'))
+                           (cfg.get('materiais') if cfg.get('materiais') and os.path.isabs(cfg.get('materiais')) else os.path.join(_MD, cfg.get('materiais') or 'MATERIAIS')))
+             if os.path.isdir(c_)), os.path.join(_MD, 'MATERIAIS'))
 _MI = os.path.join(_MD, 'materiais_index.json')
 _MC = os.path.join(_MD, 'materiais_cores.json')  # [caminho relativo a MATERIAIS, nome, [r,g,b]]: cores prontas, dispensa a pasta MATERIAIS
 _rgbx = {}
@@ -258,7 +260,7 @@ if DUP_I: print('PEÇAS DUPLICADAS NO DXF (não desenhadas):', len(DUP_I))
 PEDRA_COR = (0.16, 0.16, 0.17)
 # REGRA (v33, João): parede e piso têm que LER como parede e piso - não podem se perder dentro do
 # móvel. O móvel branco e (0.97,0.97,0.97); a parede era (0.94,0.94,0.94), quase o mesmo tom.
-PAREDE_COR = (0.87, 0.87, 0.89)
+PAREDE_COR = (0.93, 0.93, 0.94)
 PISO_COR = (0.78, 0.78, 0.80)
 AMB = [p_ for p_ in P if p_['i'] not in _usadas and p_['faces'] and 15 <= p_['dim'][2] <= 100
        and max(p_['dim'][0], p_['dim'][1]) >= 500 and min(p_['dim'][0], p_['dim'][1]) >= 250 and 700 <= p_['bb'][2] <= 1100]
@@ -344,7 +346,7 @@ PAR_DXF = [p_ for p_ in P if p_['i'] not in _usadas and p_['i'] not in {q['i'] f
            and not (p_['bb'][2] < 50 and p_['dim'][2] < 1000)]   # peça baixa no chão (rodapé solto) não é parede
 for p_ in AMB: p_['faces'] = [[tuple(v) for v in fc] for fc in p_['faces']]
 print('AMBIENTE (pedra):', len(AMB), 'peças')
-# ===== REGRAS ESPECIAIS (v18, PDF da Priscila) — só atuam quando o projeto tem esses móveis =====
+# ===== REGRAS ESPECIAIS (v18) — só atuam quando o projeto tem esses móveis =====
 def _sd(it): return sorted(parse_dim_(it['dim']))
 def parse_dim_(dm):
     try: return [float(x) for x in re.findall(r'[\d.]+', dm.replace(',', '.'))[:3]]
@@ -378,7 +380,7 @@ for axd in (0, 1):   # axd = eixo da profundidade (as ripas têm a largura de 15
 # 2) DIVISOR DE GAVETA (joias/talheres): 4+ peças finas (<= 18) e baixas (<= 100) de até 450 mm, nos dois sentidos,
 #    encostadas, acima do piso. Sai da listagem da parede e ganha uma PRANCHA PRÓPRIA (vista de cima com cotas).
 DIVISORES = []
-# REGRA (v26, cozinha Priscila): divisor de TALHER de gaveta de cozinha tem peças até 750 mm (conjunto até 800 x 800);
+# REGRA (v26): divisor de TALHER de gaveta de cozinha tem peças até 750 mm (conjunto até 800 x 800);
 #    as peças ficam DEITADAS (altura <= 100 mm de verdade no DXF) -> fechamento/tamponamento em pé não entra.
 _dv = [i for i in _comps if not i.get('_div') and i['bb'][2] > 150 and i['bb'][5] - i['bb'][2] <= 100 and (lambda d: d[0] <= 18 and d[1] <= 100 and d[2] <= 750)(_sd(i))]
 _vis = set()
@@ -463,7 +465,7 @@ for w in [w for w in paredes if not (w.get('divisoria') or w.get('bloco') or w.g
         for i in w['itens']: i['parede'] = alvo['id']
         alvo['itens'] += w['itens']; w['itens'] = []
 paredes = [w for w in paredes if w['itens']]
-# 5) CONDIÇÃO (v26, cozinha Priscila): PAREDE CORTADA POR PILAR / VÃO DE PASSAGEM. Os móveis de uma mesma parede ficam
+# 5) CONDIÇÃO (v26): PAREDE CORTADA POR PILAR / VÃO DE PASSAGEM. Os móveis de uma mesma parede ficam
 #    dos dois lados de uma parede real que atravessa a faixa dos móveis (pilar, verga de vão de passagem) -> são DOIS
 #    ambientes: cada lado vira uma parede (vista) própria, com listagem e cotas só dele (escala maior, leitura por lado).
 def _faces_parede():
@@ -503,7 +505,7 @@ for w, partes in _cortadas:
         nw = dict(key=w['key'], plano=w['plano'], itens=its_, id=f"{w['id']}{'abcdef'[k_]}", cortada=True)
         for i in its_: i['parede'] = nw['id']
         paredes.append(nw)
-# 6) CONDIÇÃO (v26, cozinha Priscila): CONJUNTO DE PAINÉIS SEM MÓDULO (painel com nichos na ponta da parede, painel
+# 6) CONDIÇÃO (v26): CONJUNTO DE PAINÉIS SEM MÓDULO (painel com nichos na ponta da parede, painel
 #    no teto, barrotes/cunhas, agastadores). Paredes só com painéis que se ENCOSTAM formam UM BLOCO PRÓPRIO no fim
 #    (como a divisória): listagem com o móvel sozinho (3D frontal + 3D lateral reta) e cotas frontal + lateral.
 _so = [w for w in paredes if not w.get('divisoria') and not any(i['tipo'] == 'mod' for i in w['itens'])]
@@ -684,7 +686,7 @@ def cotar_divisoria(page, G, ox, fy, k):
     alt = [b for b in bx if not _eh_ripa(b['it']) and (b['z1'] - b['z0']) >= 0.8 * ztop_]
     cadeia_h(page, [u0, u1] + [v for b in alt for v in (b['u0'], b['u1'])], fy + 14, fy + 2, X)
     cadeia_h(page, [u0, u1], Y(ztop_) - 14, Y(ztop_) - 2, X)
-    # REGRA (v18b, João): o montador precisa da distância entre as ripas -> cota TODOS os vãos, em cada faixa de ripas
+    # REGRA (v18b): o montador precisa da distância entre as ripas -> cota TODOS os vãos, em cada faixa de ripas
     # (embaixo e em cima do painel), com as setas por dentro; a espessura da ripa sai uma vez só.
     faixas = sorted({(round(b['z0'] / 50), round(b['z1'] / 50)) for b in rip if b['z1'] - b['z0'] >= 300})
     feitas = []
@@ -1725,7 +1727,9 @@ for j in range(1, _nr): p.draw_line((AREA.x0, a.y0 + j * a.height / _nr), (AREA.
 LIST_MAX = 15; _extra = 0
 def _partes(s_):
     global _extra
-    its = [i for w in s_['paredes'] for i in PW[w]['itens']]
+    # REGRA (v34, João): usa a lista JÁ FILTRADA (sem as peças escondidas). Antes esta função relia a
+    # lista original e as escondidas voltavam com balão quando a listagem se dividia em duas pranchas.
+    its = s_.get('itens_listados') or [i for w in s_['paredes'] for i in PW[w]['itens']]
     if len(s_['linhas']) <= LIST_MAX or not its: return [s_]
     sup = [i for i in its if (i['bb'][2] + i['bb'][5]) / 2 > 1300]; inf = [i for i in its if i not in sup]
     if sup and inf: gs = [('SUPERIORES', sup), ('INFERIORES', inf)]
@@ -1748,7 +1752,7 @@ def _partes(s_):
 for v in V:
     GS = [geom_parede(PW[w]) for w in v['paredes']]
     if v.get('divisoria'):
-        # REGRA (v18b, João): móvel complexo (divisória ripada em L) = SOZINHO, sem o ambiente, em DUAS imagens na
+        # REGRA (v18b): móvel complexo (divisória ripada em L) = SOZINHO, sem o ambiente, em DUAS imagens na
         # diagonal (uma de cada lado do L), cada uma na sua prancha; tabela completa nas duas; um balão por tipo de peça.
         its_ = PW[v['paredes'][0]]['itens']
         # REGRA (v20, João): 1ª prancha = 3D FRONTAL (como a cota, com todas as ripas); 2ª = 3D LATERAL pegando o L
@@ -1835,7 +1839,7 @@ for v in V:
         if j: p.draw_line((cx0, AREA.y0), (cx0, AREA.y1), color=PRETO, width=0.6)
 
 
-# REGRA (v18, PDF da Priscila): DIVISOR DE GAVETA (joias) = prancha própria: listagem das peças, 3D do divisor e
+# REGRA (v18): DIVISOR DE GAVETA (joias) = prancha própria: listagem das peças, 3D do divisor e
 # VISTA DE CIMA com as cotas de todos os vãos (largura e profundidade) + altura das peças.
 def _prancha_peca(g_, titulo, rotulo):
     global n, _nl

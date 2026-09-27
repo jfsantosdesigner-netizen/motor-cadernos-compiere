@@ -1,3 +1,31 @@
+MOTOR DE CADERNOS COMPIERE - v34 (27/09/2026)
+
+v34 (27/09/2026) - CADERNO CLIENTE: motor sem referência externa
+ - O motor NÃO busca referência fora dele: saiu o caminho fixo de máquina e os nomes de cliente
+   dos comentários. Material vem da pasta dentro do motor ou do caminho do config
+ - PEÇA ESCONDIDA não volta com balão quando a listagem se divide em duas pranchas
+ - PAREDE cinza bem claro (0.93), quase branco
+
+v33 (27/09/2026) - CADERNO CLIENTE: estrutura, parede e nicho
+ - PAREDE e PISO SÓLIDOS: a parede era quase do mesmo tom do móvel branco e sumia dentro dele
+ - PAREDE DA FRENTE é REMOVIDA, não recortada: a vista é sempre frontal, então parede entre a
+   câmera e o móvel não entra. Acaba a dependência de acertar posição de corte
+ - VISTA FRONTAL EXATA: elevação 0 (era 3 graus da v11); arestas verticais no prumo
+ - NICHO AMARRADO: UMA única definição de porta no motor (eram quatro, com tolerâncias
+   diferentes). MÓVEL COM PORTA NUNCA É NICHO
+ - SÓ NICHO gera segunda imagem na prancha de listagem. Saíram o detalhe das costas, o de
+   rodapé/base, o de módulo pequeno e a sub-imagem de peça escondida
+ - PEÇA ESCONDIDA NÃO É LISTADA: item que não aparece na imagem frontal fica fora da tabela e
+   não ganha balão. Nada de tirar a peça de onde ela está para fazer uma imagem só dela
+ - SEM ASTERISCO em nenhuma prancha
+
+v32 (26/09/2026) - limpeza e determinismo
+ - 330 linhas de código morto removidas: três funções estavam definidas 2 ou 3 vezes no mesmo
+   arquivo e só a última valia - correção escrita numa cópia antiga não tinha efeito no PDF
+ - texturas/ virou ASSET só-leitura; miniatura derivada vai para _cache_texturas/ (no gitignore).
+   Antes, rodada fria e rodada quente davam PDFs diferentes
+ - Verificado com grupo de controle: saída idêntica à v31 nos 12 projetos
+
 MOTOR DE CADERNOS COMPIERE - v31 (26/09/2026)
 
 REGRA: cada rodada de correções = nova versão (VERSAO.txt + ramo vN no GitHub). Versões antigas ficam guardadas nos ramos v9, v10, v11...
